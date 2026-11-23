@@ -1,0 +1,25 @@
+[package]
+name = "art_vitals"
+version = "0.3.0"
+edition = "2024"
+description = "Konfigurowalny overlay statystyk sprzetu (CPU/GPU) wyswietlany nad gra"
+
+[dependencies]
+# Renderer glow zamiast domyslnego wgpu - przezroczyste okno na Windows dziala z nim niezawodnie.
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts"] }
+env_logger = "0.11.12"
+global-hotkey = "0.10.0"
+log = "0.4.35"
+notify = "9.0.0"
+nvml-wrapper = "0.13.0"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.2.2"
+# Bez domyslnych funkcji - domyslne wlaczaja tylko backend linuksowy (libappindicator).
+tray-icon = { version = "0.26.1", default-features = false }
+windows = { version = "0.62.2", features = ["Win32_System_Performance", "Win32_System_LibraryLoader", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Threading"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
