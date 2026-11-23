@@ -889,17 +889,23 @@ impl OverlayApp {
             let thresholds_header = format!("Progi kolorów: {}", w.metric.label());
             if w.metric.has_thresholds() {
                 let thresholds_footer = format!(
-                    "Gdy {} przekroczy próg ostrzeżenia, liczba na karcie robi się żółta, a po progu krytycznym czerwona. Dodatkowe metryki mają stałe progi.",
-                    lowercase_first(w.metric.label())
+                    "Gdy {} {} progu ostrzeżenia, liczba na karcie robi się żółta, a po progu krytycznym czerwona. Dodatkowe metryki mają stałe progi.",
+                    lowercase_first(w.metric.label()),
+                    if w.metric.higher_is_worse() { "przekroczy wartość" } else { "spadnie poniżej" }
                 );
+                let (warn_label, crit_label) = if w.metric.higher_is_worse() {
+                    ("Ostrzeżenie (żółty) od", "Krytyczny (czerwony) od")
+                } else {
+                    ("Ostrzeżenie (żółty) poniżej", "Krytyczny (czerwony) poniżej")
+                };
                 ui_kit::group(ui, pal, Some(&thresholds_header), Some(&thresholds_footer), |ui| {
-                    ui_kit::row(ui, pal, "Ostrzeżenie (żółty) od", |ui| {
+                    ui_kit::row(ui, pal, warn_label, |ui| {
                         changed |= ui
                             .add(egui::DragValue::new(&mut w.warn_threshold).range(min..=max).speed(0.5).suffix(unit))
                             .changed();
                     });
                     ui_kit::divider(ui, pal);
-                    ui_kit::row(ui, pal, "Krytyczny (czerwony) od", |ui| {
+                    ui_kit::row(ui, pal, crit_label, |ui| {
                         changed |= ui
                             .add(egui::DragValue::new(&mut w.crit_threshold).range(min..=max).speed(0.5).suffix(unit))
                             .changed();
@@ -916,8 +922,11 @@ impl OverlayApp {
                     });
                 });
             }
-            if w.crit_threshold < w.warn_threshold {
-                w.crit_threshold = w.warn_threshold;
+            // Krytyczny prog musi lezec "dalej" niz ostrzezenie (wyzej dla temperatur, nizej dla FPS).
+            if w.metric.higher_is_worse() {
+                w.crit_threshold = w.crit_threshold.max(w.warn_threshold);
+            } else {
+                w.crit_threshold = w.crit_threshold.min(w.warn_threshold);
             }
 
             ui_kit::group(
@@ -1182,13 +1191,21 @@ impl OverlayApp {
 
     fn sensors_sheet(&mut self, ui: &mut egui::Ui, pal: &Palette) {
         let data = self.sensors.lock();
-        ui_kit::group(ui, pal, Some("Odczyty na żywo"), data.gpu_name.as_deref(), |ui| {
+        let footer = format!(
+            "{}{}",
+            data.gpu_name.as_deref().unwrap_or("Brak karty NVIDIA"),
+            match &data.fps_process {
+                Some(process) => format!("  ·  FPS mierzone dla: {process}"),
+                None => "  ·  FPS: brak aktywnej gry (DirectX 9-12)".to_owned(),
+            }
+        );
+        ui_kit::group(ui, pal, Some("Odczyty na żywo"), Some(&footer), |ui| {
             for (i, metric) in Metric::ALL.into_iter().enumerate() {
                 if i > 0 {
                     ui_kit::divider(ui, pal);
                 }
                 ui_kit::row(ui, pal, metric.label(), |ui| match data.value(metric) {
-                    Some(v) => ui.label(RichText::new(format!("{v:.0}{}", metric.unit())).color(pal.secondary)),
+                    Some(v) => ui.label(RichText::new(format!("{v:.*}{}", metric.decimals(), metric.unit())).color(pal.secondary)),
                     None => ui.label(RichText::new("—").color(pal.secondary)),
                 });
             }

@@ -8,6 +8,20 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
 i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 
+## [0.4.0] - 2026-11-23
+
+### Dodane
+- Pomiar klatek przez ETW (jak PresentMon): FPS, średni FPS, 1% low, 0.1% low i czas klatki
+  dla gry z aktywnym oknem. Obsługuje DirectX 9-12 (Vulkan/OpenGL, gdy sterownik prezentuje
+  przez DXGI). Wymaga uruchomienia jako administrator.
+- Wykres czasu klatki rysowany klatka po klatce (ostatnie 240 klatek), nie z próbek co sekundę.
+- Karta FPS od razu ze średnią i 1% low; okno „Czujniki” pokazuje, który proces jest mierzony.
+- Ikony: pad (FPS) i stoper (czas klatki).
+
+### Zmienione
+- Progi kolorów dla FPS działają w dół („poniżej” zamiast „od”) - kolor ostrzegawczy przy spadku.
+- Czas klatki z jednym miejscem po przecinku (np. 6.9 ms).
+
 ## [0.3.0] - 2026-11-23
 
 ### Dodane

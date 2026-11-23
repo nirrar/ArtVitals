@@ -8,6 +8,7 @@
 
 mod cpu_load;
 mod cpu_temp;
+pub mod fps;
 mod gpu;
 mod nvapi;
 
@@ -26,6 +27,11 @@ pub struct SensorData {
     pub vram_used_mb: Option<f32>,
     pub vram_total_mb: Option<f32>,
     pub gpu_name: Option<String>,
+    /// Czasy ostatnich klatek (ms), klatka po klatce - wykres czasu klatki jest dokladniejszy
+    /// niz probki co sekunde.
+    pub frame_times: VecDeque<f32>,
+    /// Plik exe gry, ktorej klatki sa mierzone.
+    pub fps_process: Option<String>,
     /// Problemy z inicjalizacja zrodel: (zrodlo, opis).
     pub issues: Vec<(&'static str, String)>,
 }
@@ -39,11 +45,21 @@ impl SensorData {
         &self.history[metric.index()]
     }
 
+    /// Dane do wykresu: (probki, stala dlugosc osi X). Czas klatki - klatka po klatce,
+    /// pozostale metryki - probki co interwal odczytu (dlugosc osi X wg historii).
+    pub fn series(&self, metric: Metric) -> (&VecDeque<f32>, Option<usize>) {
+        if metric == Metric::FrameTime && !self.frame_times.is_empty() {
+            (&self.frame_times, Some(fps::FRAME_GRAPH_LEN))
+        } else {
+            (self.history(metric), None)
+        }
+    }
+
     /// (min, srednia, max) z poprawnych probek historii.
     pub fn stats(&self, metric: Metric) -> Option<(f32, f32, f32)> {
         let mut count = 0usize;
         let (mut min, mut max, mut sum) = (f32::MAX, f32::MIN, 0.0f32);
-        for &v in self.history(metric).iter().filter(|v| v.is_finite()) {
+        for &v in self.series(metric).0.iter().filter(|v| v.is_finite()) {
             min = min.min(v);
             max = max.max(v);
             sum += v;
@@ -115,6 +131,7 @@ impl SensorHub {
         if let Some(issue) = gpu.as_ref().and_then(|g| g.thermals_issue.clone()) {
             issues.push(("Hotspot i temperatura pamięci GPU", issue));
         }
+        let mut fps_monitor = fps::FpsMonitor::start().map_err(|err| issues.push(("Pomiar FPS", err))).ok();
         for (source, issue) in &issues {
             log::warn!("{source}: {issue}");
         }
@@ -130,6 +147,11 @@ impl SensorHub {
             let temp = cpu_temp.as_mut().and_then(|s| s.read());
             let cpu_power = cpu_temp.as_mut().and_then(|s| s.read_power());
             let gpu_reading = gpu.as_ref().map(|g| g.read()).unwrap_or_default();
+            // Sredni FPS i lows liczone w tym samym oknie co historia wykresow.
+            let window_s = self.history_len.load(Ordering::Relaxed) as f64
+                * self.interval_ms.load(Ordering::Relaxed) as f64
+                / 1000.0;
+            let frames = fps_monitor.as_mut().map(|m| m.read(window_s)).unwrap_or_default();
             let vram_pct = match (gpu_reading.vram_used_mb, gpu_reading.vram_total_mb) {
                 (Some(used), Some(total)) if total > 0.0 => Some(used / total * 100.0),
                 _ => None,
@@ -153,12 +175,19 @@ impl SensorHub {
                     (Metric::GpuPower, g.power_w),
                     (Metric::GpuFan, g.fan_pct),
                     (Metric::VramUsage, vram_pct),
+                    (Metric::Fps, frames.fps),
+                    (Metric::FpsAvg, frames.avg_fps),
+                    (Metric::FpsLow1, frames.low1_fps),
+                    (Metric::FpsLow01, frames.low01_fps),
+                    (Metric::FrameTime, frames.frame_time_ms),
                 ];
                 for (metric, value) in values {
                     data.push(metric, value, history_len);
                 }
                 data.vram_used_mb = gpu_reading.vram_used_mb;
                 data.vram_total_mb = gpu_reading.vram_total_mb;
+                data.frame_times = frames.recent_frames.into_iter().collect();
+                data.fps_process = frames.process;
             }
             ctx.request_repaint();
 

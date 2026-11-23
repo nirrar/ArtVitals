@@ -84,6 +84,8 @@ pub enum WidgetIcon {
     Gauge,
     Lightning,
     Fan,
+    GameController,
+    Timer,
 }
 
 /// Jak pokazac dodatkowa metryke na karcie typu "Wykres".
@@ -143,7 +145,7 @@ impl From<ExtraMetricRepr> for ExtraMetric {
 }
 
 impl WidgetIcon {
-    pub const ALL: [WidgetIcon; 9] = [
+    pub const ALL: [WidgetIcon; 11] = [
         WidgetIcon::None,
         WidgetIcon::Cpu,
         WidgetIcon::Gpu,
@@ -153,6 +155,8 @@ impl WidgetIcon {
         WidgetIcon::Gauge,
         WidgetIcon::Lightning,
         WidgetIcon::Fan,
+        WidgetIcon::GameController,
+        WidgetIcon::Timer,
     ];
 
     pub fn label(self) -> &'static str {
@@ -166,6 +170,8 @@ impl WidgetIcon {
             WidgetIcon::Gauge => "Licznik (zegary)",
             WidgetIcon::Lightning => "Błyskawica (moc)",
             WidgetIcon::Fan => "Wentylator",
+            WidgetIcon::GameController => "Pad (FPS)",
+            WidgetIcon::Timer => "Stoper (czas klatki)",
         }
     }
 }
@@ -398,6 +404,10 @@ pub fn default_accent(metric: Metric) -> [u8; 3] {
         Metric::GpuMemClock => [150, 160, 255],
         Metric::GpuPower => [255, 196, 64],
         Metric::GpuFan => [170, 220, 120],
+        Metric::Fps | Metric::FpsAvg => [120, 226, 84],
+        Metric::FpsLow1 => [255, 196, 64],
+        Metric::FpsLow01 => [255, 140, 66],
+        Metric::FrameTime => [120, 226, 84],
     }
 }
 
@@ -411,6 +421,8 @@ pub fn default_icon(metric: Metric) -> WidgetIcon {
         Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock => WidgetIcon::Gauge,
         Metric::CpuPower | Metric::GpuPower => WidgetIcon::Lightning,
         Metric::GpuFan => WidgetIcon::Fan,
+        Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => WidgetIcon::GameController,
+        Metric::FrameTime => WidgetIcon::Timer,
     }
 }
 
@@ -467,6 +479,10 @@ pub fn suggested_widget(id: u64, metric: Metric, kind: WidgetKind, pos: [f32; 2]
     let widget = match metric {
         Metric::CpuLoad => widget.with_extra(Metric::CpuTemp, ExtraChart::Line),
         Metric::GpuLoad => widget.with_extra(Metric::GpuTemp, ExtraChart::Line),
+        // Karta FPS od razu ze srednia i 1% low (jak w popularnych overlayach).
+        Metric::Fps => widget
+            .with_extra(Metric::FpsAvg, ExtraChart::Value)
+            .with_extra(Metric::FpsLow1, ExtraChart::Value),
         _ => widget,
     };
     let footer = match (metric, kind) {
@@ -519,7 +535,13 @@ impl Config {
             widget.background_opacity = finite_or(widget.background_opacity, 0.55).clamp(0.0, 1.0);
             widget.warn_threshold = finite_or(widget.warn_threshold, 75.0);
             widget.crit_threshold = finite_or(widget.crit_threshold, 90.0);
-            if widget.crit_threshold < widget.warn_threshold {
+            // Krytyczny prog lezy "dalej" niz ostrzezenie: wyzej dla temperatur, nizej dla FPS.
+            let reversed = if widget.metric.higher_is_worse() {
+                widget.crit_threshold < widget.warn_threshold
+            } else {
+                widget.crit_threshold > widget.warn_threshold
+            };
+            if reversed {
                 std::mem::swap(&mut widget.warn_threshold, &mut widget.crit_threshold);
             }
             widget.title.truncate(64);
@@ -721,6 +743,20 @@ mod tests {
         widget.add_extra(Metric::GpuFan, ExtraChart::Value);
         assert_eq!(widget.value_grid_rows(), 2);
         assert_eq!(widget.size[1], base + 2.0 * VALUE_ROW_HEIGHT);
+    }
+
+    #[test]
+    fn fps_thresholds_are_kept_in_falling_order() {
+        let text = r#"
+            [[widgets]]
+            id = 1
+            metric = "fps"
+            kind = "number"
+            warn_threshold = 30.0
+            crit_threshold = 60.0
+        "#;
+        let config = Config::from_toml(text).unwrap();
+        assert_eq!((config.widgets[0].warn_threshold, config.widgets[0].crit_threshold), (60.0, 30.0));
     }
 
     #[test]

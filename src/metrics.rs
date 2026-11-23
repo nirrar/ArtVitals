@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub enum Device {
     Cpu,
     Gpu,
+    /// Klatki mierzonej gry (FPS, czas klatki).
+    Game,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -30,10 +32,15 @@ pub enum Metric {
     GpuPower,
     GpuFan,
     VramUsage,
+    Fps,
+    FpsAvg,
+    FpsLow1,
+    FpsLow01,
+    FrameTime,
 }
 
 impl Metric {
-    pub const ALL: [Metric; 13] = [
+    pub const ALL: [Metric; 18] = [
         Metric::CpuLoad,
         Metric::CpuTemp,
         Metric::CpuClock,
@@ -47,6 +54,11 @@ impl Metric {
         Metric::GpuPower,
         Metric::GpuFan,
         Metric::VramUsage,
+        Metric::Fps,
+        Metric::FpsAvg,
+        Metric::FpsLow1,
+        Metric::FpsLow01,
+        Metric::FrameTime,
     ];
 
     /// Pozycja w `ALL` - indeks w tablicach odczytow czujnikow.
@@ -57,6 +69,7 @@ impl Metric {
     pub fn device(self) -> Device {
         match self {
             Metric::CpuLoad | Metric::CpuTemp | Metric::CpuClock | Metric::CpuPower => Device::Cpu,
+            Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 | Metric::FrameTime => Device::Game,
             _ => Device::Gpu,
         }
     }
@@ -76,6 +89,11 @@ impl Metric {
             Metric::GpuPower => "Pobór mocy GPU",
             Metric::GpuFan => "Wentylator GPU",
             Metric::VramUsage => "Zajętość VRAM",
+            Metric::Fps => "FPS",
+            Metric::FpsAvg => "Średni FPS",
+            Metric::FpsLow1 => "1% low FPS",
+            Metric::FpsLow01 => "0.1% low FPS",
+            Metric::FrameTime => "Czas klatki",
         }
     }
 
@@ -95,6 +113,11 @@ impl Metric {
             Metric::GpuPower => "GPU PWR",
             Metric::GpuFan => "FAN",
             Metric::VramUsage => "VRAM",
+            Metric::Fps => "FPS",
+            Metric::FpsAvg => "AVG",
+            Metric::FpsLow1 => "1% LOW",
+            Metric::FpsLow01 => "0.1% LOW",
+            Metric::FrameTime => "FRAME TIME",
         }
     }
 
@@ -103,6 +126,8 @@ impl Metric {
             Metric::CpuTemp | Metric::GpuTemp | Metric::GpuHotspot | Metric::GpuMemTemp => "°C",
             Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock => " MHz",
             Metric::CpuPower | Metric::GpuPower => " W",
+            Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => "",
+            Metric::FrameTime => " ms",
             _ => "%",
         }
     }
@@ -119,6 +144,8 @@ impl Metric {
             Metric::GpuMemClock => (0.0, 16000.0),
             Metric::CpuPower => (0.0, 300.0),
             Metric::GpuPower => (0.0, 450.0),
+            Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => (0.0, 240.0),
+            Metric::FrameTime => (0.0, 50.0),
             _ => (0.0, 100.0),
         }
     }
@@ -126,6 +153,17 @@ impl Metric {
     /// Czy metryka ma progi kolorow (zegary nie maja - wysoki zegar to nic zlego).
     pub fn has_thresholds(self) -> bool {
         !matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock)
+    }
+
+    /// Czy wieksza wartosc jest gorsza (temperatura, obciazenie). Dla FPS jest odwrotnie -
+    /// ostrzezenie pojawia sie, gdy wartosc SPADA ponizej progu.
+    pub fn higher_is_worse(self) -> bool {
+        !matches!(self, Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01)
+    }
+
+    /// Liczba miejsc po przecinku przy wyswietlaniu.
+    pub fn decimals(self) -> usize {
+        if self == Metric::FrameTime { 1 } else { 0 }
     }
 
     /// Domyslne progi (ostrzezenie, krytyczny) w jednostkach metryki.
@@ -141,6 +179,11 @@ impl Metric {
             Metric::GpuPower => (250.0, 320.0),
             Metric::GpuFan => (80.0, 95.0),
             Metric::VramUsage => (80.0, 95.0),
+            // FPS: ostrzezenie ponizej pierwszej wartosci, krytyczny ponizej drugiej.
+            Metric::Fps | Metric::FpsAvg => (60.0, 30.0),
+            Metric::FpsLow1 => (45.0, 25.0),
+            Metric::FpsLow01 => (30.0, 20.0),
+            Metric::FrameTime => (25.0, 40.0),
             Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock => {
                 let (_, max) = self.range();
                 (max * 2.0, max * 2.0)
@@ -163,6 +206,13 @@ mod tests {
         for (i, metric) in Metric::ALL.iter().enumerate() {
             assert_eq!(metric.index(), i);
         }
+    }
+
+    #[test]
+    fn fps_thresholds_point_downwards() {
+        let (warn, crit) = Metric::Fps.default_thresholds();
+        assert!(!Metric::Fps.higher_is_worse() && crit < warn);
+        assert!(Metric::FrameTime.higher_is_worse());
     }
 
     #[test]

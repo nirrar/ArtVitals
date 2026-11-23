@@ -242,6 +242,7 @@ impl OverlayApp {
             self.save_now();
         }
         self.sensors.stop();
+        crate::sensors::fps::stop_session();
         ctx.send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Close);
     }
 
@@ -403,6 +404,7 @@ impl eframe::App for OverlayApp {
 impl Drop for OverlayApp {
     fn drop(&mut self) {
         self.sensors.stop();
+        crate::sensors::fps::stop_session();
         if self.dirty_since.is_some() {
             self.save_now();
         }

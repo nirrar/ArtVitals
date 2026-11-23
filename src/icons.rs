@@ -19,6 +19,8 @@ const FIRE: char = '\u{e242}';
 const GAUGE: char = '\u{e628}';
 const LIGHTNING: char = '\u{e2de}';
 const FAN: char = '\u{e9f2}';
+const GAME_CONTROLLER: char = '\u{e26e}';
+const TIMER: char = '\u{e492}';
 pub const GEAR: char = '\u{e272}';
 pub const CHECK: char = '\u{e182}';
 
@@ -50,5 +52,7 @@ pub fn glyph(icon: WidgetIcon) -> Option<char> {
         WidgetIcon::Gauge => Some(GAUGE),
         WidgetIcon::Lightning => Some(LIGHTNING),
         WidgetIcon::Fan => Some(FAN),
+        WidgetIcon::GameController => Some(GAME_CONTROLLER),
+        WidgetIcon::Timer => Some(TIMER),
     }
 }

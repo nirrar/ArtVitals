@@ -48,8 +48,9 @@ pub fn accent_color(widget: &WidgetConfig) -> Color32 {
 /// Kolor wartosci zalezny od progow - plynne przejscie zamiast skoku.
 pub fn value_color(widget: &WidgetConfig, value: f32) -> Color32 {
     let accent = accent_color(widget);
-    let warn = widget.warn_threshold;
-    let crit = widget.crit_threshold;
+    // Dla metryk "nizej = gorzej" (FPS) odwracamy znak - wtedy ta sama logika dziala dla obu kierunkow.
+    let sign = if widget.metric.higher_is_worse() { 1.0 } else { -1.0 };
+    let (value, warn, crit) = (value * sign, widget.warn_threshold * sign, widget.crit_threshold * sign);
     let fade = ((crit - warn) * 0.25).max(1.0);
     if value >= crit {
         CRIT_COLOR
@@ -71,6 +72,8 @@ fn alpha(color: Color32, opacity: f32) -> Color32 {
 fn extra_color(metric: Metric, value: Option<f32>) -> Color32 {
     let Some(v) = value else { return TEXT_MUTED };
     let (warn, crit) = metric.default_thresholds();
+    let sign = if metric.higher_is_worse() { 1.0 } else { -1.0 };
+    let (v, warn, crit) = (v * sign, warn * sign, crit * sign);
     if v >= crit {
         CRIT_COLOR
     } else if v >= warn {
@@ -192,8 +195,7 @@ fn value_extras(widget: &WidgetConfig, values: &WidgetValues) -> Vec<ExtraValue>
 
 fn format_value(metric: Metric, value: Option<f32>) -> String {
     match value {
-        Some(v) if metric == Metric::CpuTemp || metric == Metric::GpuTemp => format!("{v:.0}"),
-        Some(v) => format!("{v:.0}"),
+        Some(v) => format!("{v:.*}", metric.decimals()),
         None => "—".to_owned(),
     }
 }
@@ -545,7 +547,7 @@ fn paint_footer(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, values
                 pc.painter.text(
                     pos2(label_rect.right() + 3.0 * scale, rect.center().y),
                     Align2::LEFT_CENTER,
-                    format!("{value:.0}{}", widget.metric.unit()),
+                    format!("{}{}", format_value(widget.metric, Some(value)), widget.metric.unit()),
                     font.clone(),
                     alpha(value_color(widget, value), op),
                 );
@@ -700,8 +702,8 @@ fn paint_separate_chart(pc: &PaintContext<'_>, rect: Rect, metric: Metric, value
 /// Os X ma stala dlugosc historii, a nowe probki wjezdzaja od prawej - inaczej po starcie
 /// kilka probek rozciagaloby sie na cala szerokosc.
 fn history_segments(pc: &PaintContext<'_>, plot: Rect, metric: Metric) -> Vec<Vec<Pos2>> {
-    let history = pc.data.history(metric);
-    let capacity = pc.history_len.max(history.len()).max(2);
+    let (history, fixed_capacity) = pc.data.series(metric);
+    let capacity = fixed_capacity.unwrap_or(pc.history_len).max(history.len()).max(2);
     let offset = capacity - history.len();
     let step = plot.width() / (capacity - 1) as f32;
     let mut segments = Vec::new();
