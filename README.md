@@ -112,3 +112,8 @@ Do zrobienia (propozycje):
 - Odczyty GPU AMD (ADL) i Intel (IGCL) na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0);
   układy struktur z [AMD Display Library SDK](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) (MIT)
   i [Intel Graphics Control Library](https://github.com/intel/drivers.gpu.control-library) (`igcl_api.h`, MIT)
+- Moduł `LpcIO.bin` z PawnIO.Modules 0.2.12 - LGPL-2.1, `assets/LpcIO.LICENSE.txt`
+- Crate [hidapi](https://github.com/ruabmbua/hidapi-rs) (MIT, z biblioteką C hidapi na licencji BSD/HIDAPI)
+- Odczyt wentylatorów Super I/O (Nuvoton, ITE) i AIO NZXT Kraken na podstawie
+  [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0),
+  protokół Corsair Commander Core wg opisu w dokumentacji [liquidctl](https://github.com/liquidctl/liquidctl)

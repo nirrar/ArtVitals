@@ -49,6 +49,20 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
   wczytują się bez zmian.
 - Przetłumaczone także komunikaty czujników w oknie „Czujniki” (CPU, PawnIO, FPS) i okno
   „program już działa”. Komunikaty czujników GPU i wentylatorów - jeszcze tylko po polsku.
+- Odczyt wentylatorów płyty głównej z układu Super I/O (tylko odczyt, bez sterowania): Nuvoton
+  NCT6771F-NCT6799D, NCT6701D, NCT6102D/6104D/6106D, NCT6683D/NCT6686D/NCT6687D (także wariant
+  płyt MSI serii 800) oraz ITE IT86xx/IT87xx, porty 0x2E i 0x4E. Wykrywanie i przeliczanie obrotów
+  przeniesione z LibreHardwareMonitor (MPL-2.0); dostęp do szyny ISA synchronizowany wspólnym
+  mutexem `Global\Access_ISABUS.HTP.Method`, jak w innych narzędziach. Wymaga PawnIO i administratora.
+- Moduł `assets/LpcIO.bin` z PawnIO.Modules 0.2.12 (LGPL-2.1, `assets/LpcIO.LICENSE.txt`),
+  SHA-256 `b3896a1cab0d808fca31fe2ebcae045d59dac690da87b17c858bb8da357eb45e`
+  (paczka `release_0_2_12.zip`: `09698897ce19b92f1043a2e322cfcf0b1fe823e0b576971b178a65244fb0af9d`).
+- Odczyt chłodzeń AIO przez USB HID (pompa, wentylatory, temperatura cieczy - tylko odczyt):
+  NZXT Kraken X42/X52/X62/X72, X53/X63/X73, Z53/Z63/Z73, Kraken 2023 / 2023 Elite / Elite v2
+  (na podstawie LibreHardwareMonitor, bez ustawiania pompy przy starcie) oraz Corsair Commander
+  Core / Commander ST (Elite Capellix, Elite LCD) i Commander Core XT - pomijane, gdy działa iCUE.
+  Urządzenia otwierane współdzielone, odczyt z limitem czasu ~45 ms na urządzenie.
+- Nowa zależność: crate `hidapi` 2.6.7 (MIT).
 
 ### Naprawione
 - Indeksy sensorów NVAPI dobierane jak w LibreHardwareMonitor (prefiks „NVIDIA GeForce RTX 40/50”),
