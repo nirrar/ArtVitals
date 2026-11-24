@@ -2,7 +2,8 @@
 //! (`ControlLib.dll` instalowany ze sterownikiem).
 //!
 //! Uklady struktur i stale wg publicznego naglowka igcl_api.h (github.com/intel/drivers.gpu.control-library,
-//! licencja MIT); sposob uzycia wg LibreHardwareMonitor (MPL-2.0): Interop/IntelGcl.cs,
+//! Intel Software License Agreement - tylko do uzytku na platformach Intel, tekst w
+//! `assets/IGCL.LICENSE.txt`); sposob uzycia wg LibreHardwareMonitor (MPL-2.0): Interop/IntelGcl.cs,
 //! Hardware/Gpu/IntelDiscreteGpu.cs, Hardware/Gpu/IntelGpuGroup.cs.
 //! - `ctlPowerTelemetryGet`: temperatura GPU i VRAM, zegary, moc (roznica licznikow energii / czas),
 //!   obciazenie (roznica licznika aktywnosci / czas), wentylator,

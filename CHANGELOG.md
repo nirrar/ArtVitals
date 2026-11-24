@@ -6,10 +6,14 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 - **MAJOR** - zmiany niezgodne wstecz (np. format konfiguracji wymagający ręcznej migracji).
 
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
-i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
+i w pierwszej linii `overlay.log` (obok exe w wersji portable albo w `%APPDATA%\ArtVitals`).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-24
 ### Dodane
+- Licencja MPL-2.0 (plik `LICENSE`) i repozytorium https://github.com/nirrar/ArtVitals.
+- Zegary od 1 GHz wyświetlane w GHz (np. 2.73 GHz, 10.7 GHz), poniżej 1 GHz dalej w MHz.
+- Karta „Wentylatory”: własna nazwa każdego wentylatora (np. „Pompa AIO” dla złącza płyty)
+  i bieżące obroty przy każdym wentylatorze na liście w ustawieniach karty.
 - Tło podglądu ekranu w oknie konfiguracji ze zrzutu z gry (z pliku PNG/JPG/BMP albo ze schowka po
   PrintScreen / Win+Shift+S) - łatwiej ustawić karty względem HUD-u gry. Zrzut jest zapisywany obok konfiguracji.
 - Kolor tła kart: gotowe ciemne odcienie lub własny kolor, przycisk „Wszystkim kartom”
@@ -48,7 +52,7 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
   Nowe pole `language` w `config.toml` (`auto` / `pl` / `en`, domyślnie `auto`) - stare pliki
   wczytują się bez zmian.
 - Przetłumaczone także komunikaty czujników w oknie „Czujniki” (CPU, PawnIO, FPS) i okno
-  „program już działa”. Komunikaty czujników GPU i wentylatorów - jeszcze tylko po polsku.
+  „program już działa”, a także komunikaty czujników GPU i wentylatorów.
 - Odczyt wentylatorów płyty głównej z układu Super I/O (tylko odczyt, bez sterowania): Nuvoton
   NCT6771F-NCT6799D, NCT6701D, NCT6102D/6104D/6106D, NCT6683D/NCT6686D/NCT6687D (także wariant
   płyt MSI serii 800) oraz ITE IT86xx/IT87xx, porty 0x2E i 0x4E. Wykrywanie i przeliczanie obrotów
@@ -65,6 +69,7 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 - Nowa zależność: crate `hidapi` 2.6.7 (MIT).
 
 ### Naprawione
+- Krótka etykieta użytej pamięci RAM to „RAM GB” (wcześniej dwa razy „RAM” na jednej karcie).
 - Indeksy sensorów NVAPI dobierane jak w LibreHardwareMonitor (prefiks „NVIDIA GeForce RTX 40/50”),
   a dla kart bez „GeForce” w nazwie - wg architektury z NVML. Wcześniej np. „RTX 5000 Ada”
   dostawała układ kart RTX 50 (brak hotspotu, zła temperatura pamięci).
