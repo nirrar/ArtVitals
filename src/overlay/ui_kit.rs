@@ -275,14 +275,33 @@ pub fn color_swatches(ui: &mut egui::Ui, pal: &Palette, color: &mut [u8; 3]) -> 
         [100, 220, 210],
         [236, 236, 240],
     ];
+    color_swatches_from(ui, pal, color, &PRESETS)
+}
+
+/// Ciemne kolory tla kart (granat domyslny, czern, grafit, odcienie).
+pub const BACKGROUND_PRESETS: [[u8; 3]; 8] = [
+    [12, 22, 38],
+    [6, 6, 8],
+    [28, 30, 34],
+    [14, 30, 70],
+    [8, 34, 40],
+    [10, 32, 22],
+    [32, 16, 46],
+    [44, 12, 18],
+];
+
+/// Kolka z gotowymi kolorami + wlasny kolor; zwraca, czy kolor sie zmienil.
+pub fn color_swatches_from(ui: &mut egui::Ui, pal: &Palette, color: &mut [u8; 3], presets: &[[u8; 3]]) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.add_space(ROW_PADDING_X);
-        for preset in PRESETS {
+        for &preset in presets {
             let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
             let fill = Color32::from_rgb(preset[0], preset[1], preset[2]);
             ui.painter().circle_filled(rect.center(), 11.0, fill);
+            // Ciemne kolory (tla kart) bylyby niewidoczne na ciemnym motywie - cienka obwodka.
+            ui.painter().circle_stroke(rect.center(), 11.0, Stroke::new(1.0, pal.separator));
             if *color == preset {
                 ui.painter().circle_stroke(rect.center(), 13.0, Stroke::new(2.0, pal.label));
             }

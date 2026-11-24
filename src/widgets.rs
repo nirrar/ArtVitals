@@ -68,6 +68,15 @@ pub fn value_color(widget: &WidgetConfig, value: f32) -> Color32 {
     }
 }
 
+/// Tlo i ramka karty: ramka to rozjasniony kolor tla (dla domyslnego granatu - oryginalna ramka).
+fn card_colors(background: [u8; 3]) -> (Color32, Color32) {
+    if background == config::DEFAULT_CARD_BACKGROUND {
+        return (CARD_FILL, CARD_BORDER);
+    }
+    let fill = Color32::from_rgb(background[0], background[1], background[2]);
+    (fill, fill.lerp_to_gamma(Color32::from_rgb(150, 180, 220), 0.45))
+}
+
 fn alpha(color: Color32, opacity: f32) -> Color32 {
     color.gamma_multiply(opacity.clamp(0.0, 1.0))
 }
@@ -221,13 +230,9 @@ pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, va
 
     if widget.background_opacity > 0.0 {
         let card_alpha = widget.background_opacity * op;
-        pc.painter.rect_filled(rect, radius, alpha(CARD_FILL, card_alpha));
-        pc.painter.rect_stroke(
-            rect,
-            radius,
-            Stroke::new(1.0, alpha(CARD_BORDER, card_alpha * 0.8)),
-            StrokeKind::Inside,
-        );
+        let (fill, border) = card_colors(widget.background_color);
+        pc.painter.rect_filled(rect, radius, alpha(fill, card_alpha));
+        pc.painter.rect_stroke(rect, radius, Stroke::new(1.0, alpha(border, card_alpha * 0.8)), StrokeKind::Inside);
     }
 
     let inner = rect.shrink(8.0 * scale);

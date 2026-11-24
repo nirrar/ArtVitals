@@ -29,6 +29,8 @@ pub const VALUE_ROW_HEIGHT: f32 = 15.0;
 /// Tyle dodatkowych wartosci miesci sie w prawej kolumnie naglowka; wiecej = siatka pod naglowkiem.
 pub const HEADER_EXTRAS_MAX: usize = 2;
 const MAX_WIDGET_SIZE: f32 = 2000.0;
+/// Domyslne granatowe tlo karty.
+pub const DEFAULT_CARD_BACKGROUND: [u8; 3] = [12, 22, 38];
 /// Maksymalne powiekszenie tekstu kart (w punktach wzgledem tytulu karty).
 pub const MAX_FONT_BOOST: u32 = 10;
 /// Rozmiar tytulu karty przy skali 1 - od niego liczone jest powiekszenie "+N pt".
@@ -301,6 +303,8 @@ pub struct WidgetConfig {
     pub crit_threshold: f32,
     /// Krycie tla karty 0..1 (0 = tylko sam wykres bez tla).
     pub background_opacity: f32,
+    /// Kolor tla karty (RGB); ramka dobierana jest automatycznie.
+    pub background_color: [u8; 3],
     pub show_title: bool,
     /// Karta "Wentylatory": identyfikatory ukrytych wentylatorow (`FanReading::id`, `gpu:fan`).
     pub hidden_fans: Vec<String>,
@@ -332,6 +336,7 @@ impl WidgetConfig {
             warn_threshold: warn,
             crit_threshold: crit,
             background_opacity: 0.82,
+            background_color: DEFAULT_CARD_BACKGROUND,
             show_title: true,
             hidden_fans: Vec::new(),
         }

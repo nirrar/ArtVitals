@@ -806,6 +806,7 @@ impl OverlayApp {
         let mut changed = false;
         let mut new_metric = None;
         let mut new_kind = preview.kind;
+        let mut apply_background_to_all = None;
         let screen = self.screen;
         {
             let w = &mut self.config.widgets[index];
@@ -987,6 +988,17 @@ impl OverlayApp {
                         .add(egui::Slider::new(&mut w.background_opacity, 0.0..=1.0).show_value(false))
                         .changed();
                 });
+                ui_kit::divider(ui, pal);
+                ui_kit::row(ui, pal, "Kolor tła", |ui| {
+                    if ui.small_button("Wszystkim kartom").on_hover_text("Ustaw ten kolor i krycie tła na wszystkich kartach").clicked() {
+                        apply_background_to_all = Some((w.background_color, w.background_opacity));
+                    }
+                    if ui.small_button("Domyślny").clicked() {
+                        w.background_color = config::DEFAULT_CARD_BACKGROUND;
+                        changed = true;
+                    }
+                });
+                changed |= ui_kit::color_swatches_from(ui, pal, &mut w.background_color, &ui_kit::BACKGROUND_PRESETS);
             });
 
             let unit = w.metric.unit();
@@ -1085,6 +1097,13 @@ impl OverlayApp {
 
         if let Some(m) = new_metric {
             actions.push(WidgetAction::SetMetric(id, m));
+        }
+        if let Some((color, opacity)) = apply_background_to_all {
+            for widget in &mut self.config.widgets {
+                widget.background_color = color;
+                widget.background_opacity = opacity;
+            }
+            changed = true;
         }
         if new_kind != preview.kind {
             actions.push(WidgetAction::SetKind(id, new_kind));
