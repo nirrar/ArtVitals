@@ -103,5 +103,10 @@ Do zrobienia (propozycje):
 - Ikony [Phosphor](https://phosphoricons.com) (Bold) - MIT, `assets/Phosphor.LICENSE.txt`
 - Moduł `IntelMSR.bin` z [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) - LGPL-2.1,
   `assets/IntelMSR.LICENSE.txt`
+- Moduł `LpcIO.bin` z [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) 0.2.12 - LGPL-2.1,
+  `assets/LpcIO.LICENSE.txt`
+- Crate [hidapi](https://github.com/ruabmbua/hidapi-rs) (MIT, z biblioteką C hidapi na licencji BSD/HIDAPI)
 - Identyfikatory zdarzeń ETW na podstawie [PresentMon](https://github.com/GameTechDev/PresentMon) (MIT),
-  odczyt sensorów NVAPI na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0)
+  odczyt sensorów NVAPI, wentylatorów Super I/O (Nuvoton, ITE) i AIO NZXT Kraken na podstawie
+  [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0),
+  protokół Corsair Commander Core wg opisu w dokumentacji [liquidctl](https://github.com/liquidctl/liquidctl)
