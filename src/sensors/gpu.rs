@@ -16,6 +16,7 @@ use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
 use super::gpu_amd::AmdGpu;
 use super::gpu_intel::IntelGpu;
 use super::nvapi::{NvApiGpu, ThermalLayout, thermal_layout};
+use crate::i18n::tr;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GpuReading {
@@ -51,9 +52,11 @@ struct NvidiaGpu {
 
 impl NvidiaGpu {
     fn new() -> Result<Self, String> {
-        let nvml = Nvml::init().map_err(|err| format!("NVML niedostepne: {err}"))?;
+        let nvml = Nvml::init().map_err(|err| format!("{} {err}", tr("NVML niedostepne:", "NVML unavailable:")))?;
         let (name, arch, bus_id) = {
-            let device = nvml.device_by_index(0).map_err(|err| format!("Brak karty NVIDIA: {err}"))?;
+            let device = nvml
+                .device_by_index(0)
+                .map_err(|err| format!("{} {err}", tr("Brak karty NVIDIA:", "No NVIDIA card:")))?;
             (
                 device.name().unwrap_or_else(|_| "GPU".to_owned()),
                 device.architecture().ok(),
@@ -148,28 +151,37 @@ impl Backend {
             Self::Nvidia(gpu) => (
                 gpu.nvapi_issue.clone(),
                 if gpu.layout == ThermalLayout::Blackwell {
-                    "karty RTX 50 go nie udostepniaja"
+                    tr("karty RTX 50 go nie udostepniaja", "RTX 50 cards don't expose it")
                 } else {
-                    "sterownik go nie podaje"
+                    tr("sterownik go nie podaje", "the driver doesn't report it")
                 },
-                "sterownik podaje ja zwykle tylko dla pamieci GDDR6X/GDDR7",
+                tr(
+                    "sterownik podaje ja zwykle tylko dla pamieci GDDR6X/GDDR7",
+                    "the driver usually reports it only for GDDR6X/GDDR7 memory",
+                ),
             ),
             Self::Amd(gpu) => (
                 None,
-                "sterownik AMD go nie podaje dla tej karty",
+                tr("sterownik AMD go nie podaje dla tej karty", "the AMD driver doesn't report it for this card"),
                 if gpu.is_discrete {
-                    "sterownik AMD jej nie podaje dla tej karty"
+                    tr("sterownik AMD jej nie podaje dla tej karty", "the AMD driver doesn't report it for this card")
                 } else {
-                    "karta zintegrowana nie ma wlasnej pamieci"
+                    tr("karta zintegrowana nie ma wlasnej pamieci", "integrated graphics have no dedicated memory")
                 },
             ),
             Self::Intel(gpu) => (
                 None,
-                "sterownik Intel nie podaje osobnego hotspotu - temperatura GPU to najgoretszy czujnik",
+                tr(
+                    "sterownik Intel nie podaje osobnego hotspotu - temperatura GPU to najgoretszy czujnik",
+                    "the Intel driver has no separate hotspot - GPU temperature is the hottest sensor",
+                ),
                 if gpu.is_discrete {
-                    "sterownik Intel jej nie podaje dla tej karty"
+                    tr(
+                        "sterownik Intel jej nie podaje dla tej karty",
+                        "the Intel driver doesn't report it for this card",
+                    )
                 } else {
-                    "karta zintegrowana nie ma wlasnej pamieci"
+                    tr("karta zintegrowana nie ma wlasnej pamieci", "integrated graphics have no dedicated memory")
                 },
             ),
         }
@@ -192,8 +204,11 @@ fn thermals_issue(
         return backend_issue;
     }
     let missing: Vec<String> = [
-        probe.hotspot_c.is_none().then(|| format!("brak hotspotu ({hotspot_hint})")),
-        probe.memory_temp_c.is_none().then(|| format!("brak temperatury pamieci ({memory_hint})")),
+        probe.hotspot_c.is_none().then(|| format!("{} ({hotspot_hint})", tr("brak hotspotu", "no hotspot"))),
+        probe
+            .memory_temp_c
+            .is_none()
+            .then(|| format!("{} ({memory_hint})", tr("brak temperatury pamieci", "no memory temperature"))),
     ]
     .into_iter()
     .flatten()
@@ -249,7 +264,11 @@ impl GpuSensor {
 
         let flags: Vec<(Vendor, bool)> = found.iter().map(|b| (b.vendor(), b.is_discrete())).collect();
         let Some(index) = pick_backend(&flags) else {
-            return Err(format!("Nie znaleziono obslugiwanej karty graficznej ({})", errors.join("; ")));
+            return Err(format!(
+                "{} ({})",
+                tr("Nie znaleziono obslugiwanej karty graficznej", "No supported graphics card found"),
+                errors.join("; ")
+            ));
         };
         let backend = found.swap_remove(index);
         // Pozostale backendy zwalniaja biblioteki w Drop.

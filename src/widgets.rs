@@ -99,7 +99,7 @@ fn extra_color(metric: Metric, value: Option<f32>) -> Color32 {
 
 fn extra_text(metric: Metric, value: Option<f32>) -> String {
     match value {
-        Some(v) => format!("{}{}", format_value(metric, Some(v)), metric.unit()),
+        Some(v) => metric.display_text(v),
         None => "—".to_owned(),
     }
 }
@@ -207,11 +207,17 @@ fn value_extras(widget: &WidgetConfig, values: &WidgetValues) -> Vec<ExtraValue>
         .collect()
 }
 
+/// Sama liczba (zegary od 1 GHz juz w GHz); jednostke daje `display_unit`.
 fn format_value(metric: Metric, value: Option<f32>) -> String {
     match value {
-        Some(v) => format!("{v:.*}", metric.decimals()),
+        Some(v) => metric.display(v).0,
         None => "—".to_owned(),
     }
+}
+
+/// Jednostka pasujaca do `format_value` (MHz albo GHz dla zegarow).
+fn display_unit(metric: Metric, value: Option<f32>) -> &'static str {
+    value.map_or_else(|| metric.unit(), |v| metric.display(v).1)
 }
 
 pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, values: &WidgetValues) {
@@ -305,6 +311,11 @@ pub fn fan_rows(data: &SensorData, widget: Option<&WidgetConfig>) -> Vec<FanRow>
     }
     if let Some(widget) = widget {
         rows.retain(|row| !widget.hidden_fans.contains(&row.id));
+        for row in &mut rows {
+            if let Some(label) = widget.fan_labels.get(&row.id).filter(|l| !l.trim().is_empty()) {
+                row.name = label.trim().to_owned();
+            }
+        }
     }
     rows
 }
@@ -546,7 +557,7 @@ fn paint_header(
         pc.painter.text(
             pos2(value_rect.right() + 1.0, value_rect.bottom() - 2.0 * scale),
             Align2::LEFT_BOTTOM,
-            widget.metric.unit(),
+            display_unit(widget.metric, values.primary),
             FontId::proportional(value_size * 0.6),
             alpha(color, op),
         );
@@ -657,7 +668,7 @@ fn paint_number_card(
         pc.painter.text(
             pos2(value_rect.right() + 2.0, value_rect.bottom() - value_size * 0.12),
             Align2::LEFT_BOTTOM,
-            widget.metric.unit(),
+            display_unit(widget.metric, values.primary),
             FontId::proportional(value_size * 0.4),
             alpha(color, op),
         );
@@ -731,7 +742,7 @@ fn paint_gauge_card(
         format!(
             "{}{}",
             format_value(widget.metric, values.primary),
-            if values.primary.is_some() { widget.metric.unit() } else { "" }
+            if values.primary.is_some() { display_unit(widget.metric, values.primary) } else { "" }
         ),
         FontId::proportional(value_size),
         alpha(color, op),
@@ -838,7 +849,7 @@ fn paint_footer(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, values
                 pc.painter.text(
                     pos2(label_rect.right() + 3.0 * scale, rect.center().y),
                     Align2::LEFT_CENTER,
-                    format!("{}{}", format_value(widget.metric, Some(value)), widget.metric.unit()),
+                    widget.metric.display_text(value),
                     font.clone(),
                     alpha(value_color(widget, value), op),
                 );

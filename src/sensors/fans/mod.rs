@@ -15,6 +15,8 @@
 mod aio;
 mod superio;
 
+use crate::i18n::tr;
+
 /// Rodzaj wentylatora - wplywa na ikone i kolejnosc na karcie.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FanKind {
@@ -66,9 +68,10 @@ impl FanMonitor {
     pub fn new() -> (Self, Vec<(&'static str, String)>) {
         let mut issues = Vec::new();
         let (board, board_issues) = superio::SuperIoMonitor::new();
-        issues.extend(board_issues.into_iter().map(|issue| ("Wentylatory płyty głównej", issue)));
+        let board_source = tr("Wentylatory płyty głównej", "Motherboard fans");
+        issues.extend(board_issues.into_iter().map(|issue| (board_source, issue)));
         let (aio, aio_issues) = aio::AioMonitor::new();
-        issues.extend(aio_issues.into_iter().map(|issue| ("Chłodzenie AIO", issue)));
+        issues.extend(aio_issues.into_iter().map(|issue| (tr("Chłodzenie AIO", "AIO cooling"), issue)));
         (Self { board, aio }, issues)
     }
 

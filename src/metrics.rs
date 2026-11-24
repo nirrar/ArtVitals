@@ -138,7 +138,7 @@ impl Metric {
             Metric::FpsLow01 => "0.1% LOW",
             Metric::FrameTime => "FRAME TIME",
             Metric::RamUsage => "RAM",
-            Metric::RamUsed => "RAM",
+            Metric::RamUsed => "RAM GB",
             Metric::FanSpeed => "FANS",
         }
     }
@@ -220,6 +220,28 @@ impl Metric {
         }
     }
 
+    /// Czy metryka jest zegarem (MHz) - zegary od 1 GHz wyswietlane sa w GHz.
+    pub fn is_clock(self) -> bool {
+        matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock)
+    }
+
+    /// Wartosc do wyswietlenia: (liczba, jednostka). Zegary od 1000 MHz w GHz
+    /// (2 miejsca po przecinku, od 10 GHz - 1), ponizej 1 GHz w MHz.
+    pub fn display(self, value: f32) -> (String, &'static str) {
+        if self.is_clock() && value >= 1000.0 {
+            let ghz = value / 1000.0;
+            let decimals = if ghz >= 10.0 { 1 } else { 2 };
+            return (format!("{ghz:.decimals$}"), " GHz");
+        }
+        (format!("{value:.*}", self.decimals()), self.unit())
+    }
+
+    /// Jak `display`, ale jako jeden napis ("2.73 GHz", "45%").
+    pub fn display_text(self, value: f32) -> String {
+        let (number, unit) = self.display(value);
+        format!("{number}{unit}")
+    }
+
     pub fn normalize(self, value: f32) -> f32 {
         let (min, max) = self.range();
         ((value - min) / (max - min)).clamp(0.0, 1.0)
@@ -242,6 +264,14 @@ mod tests {
         let (warn, crit) = Metric::Fps.default_thresholds();
         assert!(!Metric::Fps.higher_is_worse() && crit < warn);
         assert!(Metric::FrameTime.higher_is_worse());
+    }
+
+    #[test]
+    fn clocks_switch_to_ghz_from_one_gigahertz() {
+        assert_eq!(Metric::GpuClock.display_text(2730.0), "2.73 GHz");
+        assert_eq!(Metric::GpuMemClock.display_text(10701.0), "10.7 GHz");
+        assert_eq!(Metric::CpuClock.display_text(800.0), "800 MHz");
+        assert_eq!(Metric::CpuLoad.display_text(45.0), "45%");
     }
 
     #[test]

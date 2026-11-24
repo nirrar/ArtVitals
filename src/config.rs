@@ -309,6 +309,8 @@ pub struct WidgetConfig {
     pub show_title: bool,
     /// Karta "Wentylatory": identyfikatory ukrytych wentylatorow (`FanReading::id`, `gpu:fan`).
     pub hidden_fans: Vec<String>,
+    /// Karta "Wentylatory": wlasne nazwy wentylatorow (id -> nazwa), np. "Pompa AIO" dla kanalu plyty.
+    pub fan_labels: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for WidgetConfig {
@@ -340,6 +342,7 @@ impl WidgetConfig {
             background_color: DEFAULT_CARD_BACKGROUND,
             show_title: true,
             hidden_fans: Vec::new(),
+            fan_labels: std::collections::BTreeMap::new(),
         }
     }
 

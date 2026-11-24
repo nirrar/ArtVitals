@@ -19,6 +19,8 @@ use windows::Win32::Foundation::HMODULE;
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::core::{PCSTR, w};
 
+use crate::i18n::tr;
+
 const ID_INITIALIZE: u32 = 0x0150_E828;
 const ID_ENUM_PHYSICAL_GPUS: u32 = 0xE5AC_921F;
 const ID_GET_THERMAL_SENSORS: u32 = 0x65FE_3AAD;
@@ -136,15 +138,19 @@ impl NvApiGpu {
     /// `bus_id` z NVML (PCI bus) - wybiera ten sam fizyczny GPU, co NVML; bez niego pierwszy uchwyt.
     pub fn new(layout: ThermalLayout, bus_id: Option<u32>) -> Result<Self, String> {
         unsafe {
-            let library = LoadLibraryW(w!("nvapi64.dll")).map_err(|err| format!("Brak nvapi64.dll: {err}"))?;
+            let library = LoadLibraryW(w!("nvapi64.dll"))
+                .map_err(|err| format!("{} {err}", tr("Brak nvapi64.dll:", "nvapi64.dll not found:")))?;
             let query = GetProcAddress(library, PCSTR(c"nvapi_QueryInterface".as_ptr().cast()))
-                .ok_or("Brak nvapi_QueryInterface")?;
+                .ok_or(tr("Brak nvapi_QueryInterface", "nvapi_QueryInterface not found"))?;
             let query: QueryInterfaceFn = std::mem::transmute(query);
             let resolve = |id: u32| {
                 let ptr = query(id);
                 (!ptr.is_null()).then_some(ptr)
             };
-            let required = |id: u32| resolve(id).ok_or_else(|| format!("NVAPI nie zna funkcji 0x{id:08X}"));
+            let required = |id: u32| {
+                let unknown = || format!("{} 0x{id:08X}", tr("NVAPI nie zna funkcji", "NVAPI: unknown function"));
+                resolve(id).ok_or_else(unknown)
+            };
             let initialize: InitializeFn = std::mem::transmute(required(ID_INITIALIZE)?);
             let enum_gpus: EnumPhysicalGpusFn = std::mem::transmute(required(ID_ENUM_PHYSICAL_GPUS)?);
             // Pozostale funkcje sa opcjonalne - brak jednej nie wylacza pozostalych odczytow.
@@ -157,12 +163,12 @@ impl NvApiGpu {
                 resolve(ID_GET_TACH_READING).map(|p| std::mem::transmute::<*mut c_void, GetTachReadingFn>(p));
 
             if initialize() != NVAPI_OK {
-                return Err("NvAPI_Initialize nieudane".to_owned());
+                return Err(format!("NvAPI_Initialize {}", tr("nieudane", "failed")));
             }
             let mut handles = [std::ptr::null_mut::<c_void>(); MAX_PHYSICAL_GPUS];
             let mut count = 0i32;
             if enum_gpus(handles.as_mut_ptr(), &mut count) != NVAPI_OK || count < 1 {
-                return Err("NVAPI nie widzi karty NVIDIA".to_owned());
+                return Err(tr("NVAPI nie widzi karty NVIDIA", "NVAPI sees no NVIDIA card").to_owned());
             }
             let handles = &handles[..(count as usize).min(MAX_PHYSICAL_GPUS)];
 

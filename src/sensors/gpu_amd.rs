@@ -24,6 +24,7 @@ use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::core::{PCSTR, w};
 
 use super::gpu::GpuReading;
+use crate::i18n::tr;
 
 const ADL_OK: i32 = 0;
 const ADL_TRUE: i32 = 1;
@@ -409,14 +410,20 @@ unsafe fn symbol<T>(library: HMODULE, name: &std::ffi::CStr) -> Option<T> {
 impl AmdGpu {
     pub fn new() -> Result<Self, String> {
         unsafe {
-            let library = LoadLibraryW(w!("atiadlxx.dll"))
-                .map_err(|_| "Brak atiadlxx.dll (sterownik AMD nie jest zainstalowany)".to_owned())?;
+            let library = LoadLibraryW(w!("atiadlxx.dll")).map_err(|_| {
+                tr(
+                    "Brak atiadlxx.dll (sterownik AMD nie jest zainstalowany)",
+                    "atiadlxx.dll not found (AMD driver not installed)",
+                )
+                .to_owned()
+            })?;
+            let missing = |function: &str| format!("ADL: {} {function}", tr("brak", "missing"));
             let create: MainControlCreateFn =
-                symbol(library, c"ADL2_Main_Control_Create").ok_or("ADL: brak ADL2_Main_Control_Create")?;
+                symbol(library, c"ADL2_Main_Control_Create").ok_or_else(|| missing("ADL2_Main_Control_Create"))?;
             let number_of_adapters: NumberOfAdaptersFn = symbol(library, c"ADL2_Adapter_NumberOfAdapters_Get")
-                .ok_or("ADL: brak ADL2_Adapter_NumberOfAdapters_Get")?;
+                .ok_or_else(|| missing("ADL2_Adapter_NumberOfAdapters_Get"))?;
             let adapter_info_get: AdapterInfoGetFn =
-                symbol(library, c"ADL2_Adapter_AdapterInfo_Get").ok_or("ADL: brak ADL2_Adapter_AdapterInfo_Get")?;
+                symbol(library, c"ADL2_Adapter_AdapterInfo_Get").ok_or_else(|| missing("ADL2_Adapter_AdapterInfo_Get"))?;
             let functions = Functions {
                 main_control_destroy: symbol(library, c"ADL2_Main_Control_Destroy"),
                 od5_temperature: symbol(library, c"ADL2_Overdrive5_Temperature_Get"),
@@ -434,7 +441,7 @@ impl AmdGpu {
             // 1 = tylko adaptery podlaczone/aktywne (jak LHM).
             let status = create(adl_alloc, 1, &mut context);
             if status != ADL_OK || context.is_null() {
-                return Err(format!("ADL2_Main_Control_Create nieudane (kod {status})"));
+                return Err(format!("ADL2_Main_Control_Create {} {status})", tr("nieudane (kod", "failed (code")));
             }
             // Od tej chwili kontekst zwalnia Drop - takze przy bledzie ponizej.
             let mut gpu = Self {
@@ -455,13 +462,13 @@ impl AmdGpu {
 
             let mut count = 0i32;
             if number_of_adapters(context, &mut count) != ADL_OK || count <= 0 {
-                return Err("ADL nie widzi zadnej karty AMD".to_owned());
+                return Err(tr("ADL nie widzi zadnej karty AMD", "ADL sees no AMD card").to_owned());
             }
             let count = count.min(256) as usize;
             let mut infos: Vec<AdlAdapterInfo> = vec![std::mem::zeroed(); count];
             let bytes = (count * size_of::<AdlAdapterInfo>()) as i32;
             if adapter_info_get(context, infos.as_mut_ptr(), bytes) != ADL_OK {
-                return Err("ADL2_Adapter_AdapterInfo_Get nieudane".to_owned());
+                return Err(format!("ADL2_Adapter_AdapterInfo_Get {}", tr("nieudane", "failed")));
             }
 
             let active_get: Option<AdapterActiveGetFn> = symbol(library, c"ADL2_Adapter_Active_Get");
@@ -500,7 +507,7 @@ impl AmdGpu {
                     }
                 })
                 .collect();
-            let chosen = pick_adapter(&candidates).ok_or("ADL nie znalazl karty AMD")?;
+            let chosen = pick_adapter(&candidates).ok_or(tr("ADL nie znalazl karty AMD", "ADL found no AMD card"))?;
             let candidate = &candidates[chosen];
             gpu.adapter_index = candidate.adapter_index;
             gpu.family = candidate.family;

@@ -21,6 +21,7 @@ use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::core::{PCSTR, w};
 
 use super::gpu::GpuReading;
+use crate::i18n::tr;
 
 const CTL_RESULT_SUCCESS: i32 = 0;
 /// CTL_MAKE_VERSION(CTL_IMPL_MAJOR_VERSION = 1, CTL_IMPL_MINOR_VERSION = 1).
@@ -324,13 +325,19 @@ unsafe fn enumerate(f: EnumComponentsFn, parent: Handle, limit: u32) -> Vec<Hand
 impl IntelGpu {
     pub fn new() -> Result<Self, String> {
         unsafe {
-            let library = LoadLibraryW(w!("ControlLib.dll"))
-                .map_err(|_| "Brak ControlLib.dll (sterownik Intel Graphics nie jest zainstalowany)".to_owned())?;
-            let init: InitFn = symbol(library, c"ctlInit").ok_or("IGCL: brak ctlInit")?;
+            let library = LoadLibraryW(w!("ControlLib.dll")).map_err(|_| {
+                tr(
+                    "Brak ControlLib.dll (sterownik Intel Graphics nie jest zainstalowany)",
+                    "ControlLib.dll not found (Intel Graphics driver not installed)",
+                )
+                .to_owned()
+            })?;
+            let missing = |function: &str| format!("IGCL: {} {function}", tr("brak", "missing"));
+            let init: InitFn = symbol(library, c"ctlInit").ok_or_else(|| missing("ctlInit"))?;
             let enumerate_devices: EnumerateDevicesFn =
-                symbol(library, c"ctlEnumerateDevices").ok_or("IGCL: brak ctlEnumerateDevices")?;
+                symbol(library, c"ctlEnumerateDevices").ok_or_else(|| missing("ctlEnumerateDevices"))?;
             let get_properties: GetDevicePropertiesFn =
-                symbol(library, c"ctlGetDeviceProperties").ok_or("IGCL: brak ctlGetDeviceProperties")?;
+                symbol(library, c"ctlGetDeviceProperties").ok_or_else(|| missing("ctlGetDeviceProperties"))?;
             let close: Option<CloseFn> = symbol(library, c"ctlClose");
 
             // Telemetria wymaga Level Zero (CTL_INIT_FLAG_USE_LEVEL_ZERO, jak LHM i przyklady Intela).
@@ -344,7 +351,7 @@ impl IntelGpu {
             let mut api: Handle = std::ptr::null_mut();
             let status = init(&mut args, &mut api);
             if status != CTL_RESULT_SUCCESS || api.is_null() {
-                return Err(format!("ctlInit nieudane (kod 0x{status:08X})"));
+                return Err(format!("ctlInit {} 0x{status:08X})", tr("nieudane (kod", "failed (code")));
             }
             let mut gpu = Self {
                 _library: library,
@@ -363,7 +370,7 @@ impl IntelGpu {
 
             let devices = enumerate(enumerate_devices, api, MAX_DEVICES);
             if devices.is_empty() {
-                return Err("IGCL nie widzi karty Intel".to_owned());
+                return Err(tr("IGCL nie widzi karty Intel", "IGCL sees no Intel card").to_owned());
             }
             let properties: Vec<Option<CtlDeviceAdapterProperties>> = devices
                 .iter()
@@ -390,8 +397,11 @@ impl IntelGpu {
                     None => (false, false),
                 })
                 .collect();
-            let chosen = pick_device(&flags).ok_or("IGCL nie znalazl karty graficznej Intel")?;
-            let props = properties[chosen].as_ref().ok_or("IGCL: brak wlasciwosci karty")?;
+            let chosen = pick_device(&flags)
+                .ok_or(tr("IGCL nie znalazl karty graficznej Intel", "IGCL found no Intel graphics card"))?;
+            let props = properties[chosen]
+                .as_ref()
+                .ok_or(tr("IGCL: brak wlasciwosci karty", "IGCL: card properties unavailable"))?;
             gpu.device = devices[chosen];
             gpu.is_discrete = !flags[chosen].1;
             gpu.name = {

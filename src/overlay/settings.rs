@@ -948,11 +948,36 @@ impl OverlayApp {
                                 ui_kit::divider(ui, pal);
                             }
                             let mut shown = !w.hidden_fans.contains(&row.id);
-                            if ui_kit::row(ui, pal, &row.name, |ui| ui_kit::toggle(ui, pal, &mut shown)).changed() {
+                            // Biezace obroty przy nazwie - latwiej rozpoznac, ktory kanal to pompa.
+                            let rpm = row.rpm.map_or_else(|| "—".to_owned(), |rpm| format!("{rpm:.0} RPM"));
+                            let mut label = w.fan_labels.get(&row.id).cloned().unwrap_or_default();
+                            let mut renamed = false;
+                            let toggled = ui_kit::row(ui, pal, &format!("{}  ·  {rpm}", row.name), |ui| {
+                                let toggle = ui_kit::toggle(ui, pal, &mut shown);
+                                renamed = ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut label)
+                                            .hint_text(tr("Własna nazwa", "Custom name"))
+                                            .char_limit(32)
+                                            .desired_width(130.0),
+                                    )
+                                    .changed();
+                                toggle
+                            })
+                            .changed();
+                            if toggled {
                                 if shown {
                                     w.hidden_fans.retain(|id| *id != row.id);
                                 } else {
                                     w.hidden_fans.push(row.id.clone());
+                                }
+                                changed = true;
+                            }
+                            if renamed {
+                                if label.trim().is_empty() {
+                                    w.fan_labels.remove(&row.id);
+                                } else {
+                                    w.fan_labels.insert(row.id.clone(), label);
                                 }
                                 changed = true;
                             }
@@ -1438,7 +1463,7 @@ impl OverlayApp {
                     ui_kit::divider(ui, pal);
                 }
                 ui_kit::row(ui, pal, metric.label(), |ui| match data.value(metric) {
-                    Some(v) => ui.label(RichText::new(format!("{v:.*}{}", metric.decimals(), metric.unit())).color(pal.secondary)),
+                    Some(v) => ui.label(RichText::new(metric.display_text(v)).color(pal.secondary)),
                     None => ui.label(RichText::new("—").color(pal.secondary)),
                 });
             }

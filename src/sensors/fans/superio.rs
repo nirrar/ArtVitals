@@ -37,6 +37,7 @@ use windows::Win32::System::Threading::{
 use windows::core::w;
 
 use super::{FanKind, FanReading};
+use crate::i18n::tr;
 use crate::sensors::pawnio::PawnIo;
 
 const LPC_IO_MODULE: &[u8] = include_bytes!("../../../assets/LpcIO.bin");
@@ -444,28 +445,34 @@ pub(crate) fn nct668x_registers(chip: Chip) -> (Vec<u16>, Vec<u16>) {
     }
 }
 
+/// Nazwa kanalu bez opisu na plycie: "Wentylator N" (numeracja od 1).
+fn generic_fan_name(index: usize) -> String {
+    format!("{} {}", tr("Wentylator", "Fan"), index + 1)
+}
+
 /// Kanaly NCT668x zawsze pokazywane wraz z nazwami (domyslna konfiguracja z `SuperIOHardware.cs`).
 /// Pozostale kanaly sa dodawane tylko, gdy przy starcie pokazuja obroty > 0.
 pub(crate) fn nct668x_default_channels(chip: Chip) -> Vec<(usize, String)> {
-    let generic = |i: usize| format!("Wentylator {}", i + 1);
-    let system = |n: usize| format!("Wentylator systemowy {n}");
+    let system = |n: usize| format!("{} {n}", tr("Wentylator systemowy", "System fan"));
+    let cpu_fan = || tr("Wentylator CPU", "CPU fan").to_owned();
+    let board_pump = || tr("Pompa (złącze płyty)", "Pump (board header)").to_owned();
     match chip {
         Chip::Nct6686D | Chip::Nct6687D => {
-            let mut list = vec![(0, "Wentylator CPU".to_owned()), (1, "Pompa (złącze płyty)".to_owned())];
+            let mut list = vec![(0, cpu_fan()), (1, board_pump())];
             list.extend((2..8).map(|i| (i, system(i - 1))));
             list
         }
         Chip::Nct6687DR => {
             let mut list = vec![
-                (0, "Wentylator CPU".to_owned()),
-                (1, "Pompa (złącze płyty)".to_owned()),
-                (2, "Wentylator chipsetu".to_owned()),
-                (3, "Wentylator EZ-Connect".to_owned()),
+                (0, cpu_fan()),
+                (1, board_pump()),
+                (2, tr("Wentylator chipsetu", "Chipset fan").to_owned()),
+                (3, tr("Wentylator EZ-Connect", "EZ-Connect fan").to_owned()),
             ];
             list.extend((10..16).map(|i| (i, system(i - 9))));
             list
         }
-        _ => (0..8).map(|i| (i, generic(i))).collect(),
+        _ => (0..8).map(|i| (i, generic_fan_name(i))).collect(),
     }
 }
 
@@ -1014,8 +1021,10 @@ fn detect_nuvoton(port: &LpcPort) -> Result<Detection, String> {
         if id != 0 && id != 0xFF {
             port.nuvoton_exit()?;
             let report = format!(
-                "nieobsługiwany układ Winbond/Nuvoton/Fintek (ID 0x{:04X}) na porcie 0x{:X}",
+                "{} (ID 0x{:04X}) {} 0x{:X}",
+                tr("nieobsługiwany układ Winbond/Nuvoton/Fintek", "unsupported Winbond/Nuvoton/Fintek chip"),
                 (u16::from(id) << 8) | u16::from(revision),
+                tr("na porcie", "on port"),
                 port.register_port
             );
             return Ok(Detection::Rejected(report));
@@ -1031,7 +1040,11 @@ fn detect_nuvoton(port: &LpcPort) -> Result<Detection, String> {
     // LHM w tym miejscu wlacza nieaktywne urzadzenie monitora NCT6701D - my tylko czytamy.
     if chip == Chip::Nct6701D && port.read_byte(LOGICAL_DEVICE_ACTIVATE_REGISTER)? == 0 {
         port.nuvoton_exit()?;
-        return Ok(Detection::Rejected(format!("{}: monitor sprzętu wyłączony przez BIOS", chip.display_name())));
+        return Ok(Detection::Rejected(format!(
+            "{}: {}",
+            chip.display_name(),
+            tr("monitor sprzętu wyłączony przez BIOS", "hardware monitor disabled by BIOS")
+        )));
     }
     let mut address = port.read_word(BASE_ADDRESS_REGISTER)?;
     std::thread::sleep(Duration::from_millis(1));
@@ -1048,14 +1061,22 @@ fn detect_nuvoton(port: &LpcPort) -> Result<Detection, String> {
     port.nuvoton_exit()?;
 
     if address != verify {
-        return Ok(Detection::Rejected(format!("{}: weryfikacja adresu nieudana", chip.display_name())));
+        return Ok(Detection::Rejected(format!(
+            "{}: {}",
+            chip.display_name(),
+            tr("weryfikacja adresu nieudana", "address verification failed")
+        )));
     }
     // Niektore uklady maja juz dodane przesuniecie 0x05.
     if address & 0x07 == 0x05 {
         address &= 0xFFF8;
     }
     if is_invalid_base(address) {
-        return Ok(Detection::Rejected(format!("{}: niepoprawny adres 0x{address:X}", chip.display_name())));
+        return Ok(Detection::Rejected(format!(
+            "{}: {} 0x{address:X}",
+            chip.display_name(),
+            tr("niepoprawny adres", "invalid address")
+        )));
     }
     Ok(Detection::Found(Draft { chip, base: address, it87_version: 0 }))
 }
@@ -1073,7 +1094,12 @@ fn detect_ite(port: &LpcPort) -> Result<Detection, String> {
     let Some(chip) = ite_chip(chip_id) else {
         if chip_id != 0 && chip_id != 0xFFFF {
             port.it87_exit()?;
-            let report = format!("nieobsługiwany układ ITE (ID 0x{chip_id:04X}) na porcie 0x{:X}", port.register_port);
+            let report = format!(
+                "{} (ID 0x{chip_id:04X}) {} 0x{:X}",
+                tr("nieobsługiwany układ ITE", "unsupported ITE chip"),
+                tr("na porcie", "on port"),
+                port.register_port
+            );
             return Ok(Detection::Rejected(report));
         }
         return Ok(Detection::Nothing);
@@ -1098,10 +1124,18 @@ fn detect_ite(port: &LpcPort) -> Result<Detection, String> {
     port.it87_exit()?;
 
     if address != verify || is_invalid_base(address) {
-        return Ok(Detection::Rejected(format!("{}: niepoprawny adres 0x{address:X}", chip.display_name())));
+        return Ok(Detection::Rejected(format!(
+            "{}: {} 0x{address:X}",
+            chip.display_name(),
+            tr("niepoprawny adres", "invalid address")
+        )));
     }
     if gpio_address != gpio_verify || is_invalid_base(gpio_address) {
-        return Ok(Detection::Rejected(format!("{}: niepoprawny adres GPIO 0x{gpio_address:X}", chip.display_name())));
+        return Ok(Detection::Rejected(format!(
+            "{}: {} 0x{gpio_address:X}",
+            chip.display_name(),
+            tr("niepoprawny adres GPIO", "invalid GPIO address")
+        )));
     }
     Ok(Detection::Found(Draft { chip, base: address, it87_version: version }))
 }
@@ -1132,12 +1166,13 @@ fn build_chip(port: LpcPort, draft: Draft) -> Result<SuperIoChip, String> {
     if chip.is_ite() {
         let (vendor, valid) = found.it87_read(IT87_VENDOR_ID_REGISTER)?;
         if !valid || !ITE_VENDOR_IDS.contains(&vendor) {
-            return Err(format!("{name}: nieoczekiwany identyfikator producenta 0x{vendor:02X}"));
+            let issue = tr("nieoczekiwany identyfikator producenta", "unexpected vendor ID");
+            return Err(format!("{name}: {issue} 0x{vendor:02X}"));
         }
         // Bit 0x10 rejestru konfiguracji zawsze ustawiony (poza IT8655E/IT8665E).
         let (configuration, valid) = found.it87_read(IT87_CONFIGURATION_REGISTER)?;
         if !valid || (configuration & 0x10 == 0 && chip != Chip::It8655E && chip != Chip::It8665E) {
-            return Err(format!("{name}: monitor sprzętu nieaktywny"));
+            return Err(format!("{name}: {}", tr("monitor sprzętu nieaktywny", "hardware monitor inactive")));
         }
         let layout = it87_layout(chip);
         let has_16bit = it87_has_16bit(chip, it87_version);
@@ -1164,7 +1199,7 @@ fn build_chip(port: LpcPort, draft: Draft) -> Result<SuperIoChip, String> {
         }
         found.channels = (0..layout.fan_count)
             .filter(|&i| !fans_disabled[i])
-            .map(|i| channel(chip, i, format!("Wentylator {}", i + 1)))
+            .map(|i| channel(chip, i, generic_fan_name(i)))
             .collect();
         found.backend = Backend::It87 { layout, has_16bit, fans_disabled };
     } else if chip.is_nct668x() {
@@ -1181,17 +1216,18 @@ fn build_chip(port: LpcPort, draft: Draft) -> Result<SuperIoChip, String> {
         let mut channels: Vec<Channel> = defaults.iter().map(|(i, n)| channel(chip, *i, n.clone())).collect();
         for (i, (rpm, _)) in first.iter().enumerate() {
             if !defaults.iter().any(|(d, _)| *d == i) && rpm.is_some_and(|r| r > 0.0) {
-                channels.push(channel(chip, i, format!("Wentylator {}", i + 1)));
+                channels.push(channel(chip, i, generic_fan_name(i)));
             }
         }
         channels.sort_by_key(|c| c.index);
         found.channels = channels;
     } else {
-        let layout = nct677x_layout(chip).ok_or_else(|| format!("{name}: brak opisu rejestrów"))?;
+        let layout = nct677x_layout(chip)
+            .ok_or_else(|| format!("{name}: {}", tr("brak opisu rejestrów", "no register layout")))?;
         if !found.nct_is_vendor(&layout)? {
-            return Err(format!("{name}: nieoczekiwany identyfikator producenta"));
+            return Err(format!("{name}: {}", tr("nieoczekiwany identyfikator producenta", "unexpected vendor ID")));
         }
-        found.channels = (0..layout.fan_count).map(|i| channel(chip, i, format!("Wentylator {}", i + 1))).collect();
+        found.channels = (0..layout.fan_count).map(|i| channel(chip, i, generic_fan_name(i))).collect();
         found.backend = Backend::Nct677x(layout);
     }
     found.last = vec![(None, None); found.channels.len()];
@@ -1235,7 +1271,11 @@ impl SuperIoMonitor {
             }
         }
         let Some(guard) = mutex.lock(DETECT_LOCK_TIMEOUT_MS) else {
-            return (None, vec!["Szyna ISA zajęta przez inny program monitorujący - spróbuj ponownie".to_owned()]);
+            let issue = tr(
+                "Szyna ISA zajęta przez inny program monitorujący - spróbuj ponownie",
+                "ISA bus is busy with another monitoring program - try again",
+            );
+            return (None, vec![issue.to_owned()]);
         };
         let mut chips = Vec::new();
         let mut reports = Vec::new();
@@ -1266,8 +1306,11 @@ impl SuperIoMonitor {
         }
 
         if chips.is_empty() {
-            let mut issue =
-                "Nie wykryto obsługiwanego układu Super I/O (Nuvoton NCT67xx/NCT668x, ITE IT86xx/IT87xx)".to_owned();
+            let mut issue = tr(
+                "Nie wykryto obsługiwanego układu Super I/O (Nuvoton NCT67xx/NCT668x, ITE IT86xx/IT87xx)",
+                "No supported Super I/O chip detected (Nuvoton NCT67xx/NCT668x, ITE IT86xx/IT87xx)",
+            )
+            .to_owned();
             if !reports.is_empty() {
                 issue.push_str(": ");
                 issue.push_str(&reports.join("; "));

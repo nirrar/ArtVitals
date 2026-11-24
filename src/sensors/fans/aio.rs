@@ -32,6 +32,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 };
 
 use super::{FanKind, FanReading};
+use crate::i18n::tr;
 
 const NZXT_VID: u16 = 0x1E71;
 const CORSAIR_VID: u16 = 0x1B1C;
@@ -334,7 +335,7 @@ fn commander_transact(dev: &HidDevice, command: &[u8], deadline: Instant) -> Res
     loop {
         let wait = remaining_ms(deadline);
         if wait <= 0 {
-            return Err(format!("brak odpowiedzi na polecenie 0x{:02X}", command[0]));
+            return Err(format!("{} 0x{:02X}", tr("brak odpowiedzi na polecenie", "no response to command"), command[0]));
         }
         let n = dev.read_timeout(&mut buf, wait).map_err(|e| e.to_string())?;
         if n == 0 {
@@ -343,7 +344,13 @@ fn commander_transact(dev: &HidDevice, command: &[u8], deadline: Instant) -> Res
         let response = &buf[..n];
         if n >= 3 && response[0] == 0x00 && response[1] == command[0] {
             if response[2] != 0x00 {
-                return Err(format!("polecenie 0x{:02X} odrzucone (status 0x{:02X})", command[0], response[2]));
+                return Err(format!(
+                    "{} 0x{:02X} {} 0x{:02X})",
+                    tr("polecenie", "command"),
+                    command[0],
+                    tr("odrzucone (status", "rejected (status"),
+                    response[2]
+                ));
             }
             return Ok(response.to_vec());
         }
@@ -360,7 +367,9 @@ fn commander_read_mode(dev: &HidDevice, mode: (u8, [u8; 2]), deadline: Instant) 
     closed?;
     commander_read_payload(&response, mode.1)
         .map(<[u8]>::to_vec)
-        .ok_or_else(|| format!("nieoczekiwana odpowiedz w trybie 0x{:02X}", mode.0))
+        .ok_or_else(|| {
+            format!("{} 0x{:02X}", tr("nieoczekiwana odpowiedz w trybie", "unexpected response in mode"), mode.0)
+        })
 }
 
 /// Pelny odczyt Commander Core: wybudzenie, predkosci (+ temperatury), uspienie (powrot do trybu sprzetowego).
@@ -368,7 +377,7 @@ fn poll_commander(dev: &HidDevice, has_pump: bool, deadline: Instant) -> Result<
     commander_transact(dev, &CC_WAKE, deadline)?;
     let result = (|| {
         let speeds = commander_read_mode(dev, CC_MODE_SPEEDS, deadline)?;
-        let speeds = commander_parse_speeds(&speeds).ok_or("niepoprawna lista predkosci")?;
+        let speeds = commander_parse_speeds(&speeds).ok_or(tr("niepoprawna lista predkosci", "invalid speed list"))?;
         let temperatures = if has_pump {
             let data = commander_read_mode(dev, CC_MODE_TEMPERATURES, deadline)?;
             commander_parse_temperatures(&data)
@@ -391,7 +400,8 @@ fn commander_connected_fans(dev: &HidDevice, has_pump: bool, deadline: Instant) 
     let slept = commander_transact(dev, &CC_SLEEP, deadline.max(Instant::now() + Duration::from_millis(15)));
     let data = data?;
     slept?;
-    let connected = commander_parse_connected(&data).ok_or("niepoprawna lista podlaczonych urzadzen")?;
+    let connected = commander_parse_connected(&data)
+        .ok_or(tr("niepoprawna lista podlaczonych urzadzen", "invalid connected device list"))?;
     let skip = usize::from(has_pump);
     Ok(connected.iter().skip(skip).enumerate().filter(|(_, c)| **c).map(|(i, _)| i).collect())
 }
@@ -467,7 +477,7 @@ impl AioDevice {
         ) {
             out.push(FanReading {
                 id: format!("{}:pump", self.id_prefix),
-                name: format!("Pompa{}", self.name_suffix),
+                name: format!("{}{}", tr("Pompa", "Pump"), self.name_suffix),
                 kind: FanKind::Pump,
                 rpm: value(self.status.pump_rpm),
                 duty_pct: value(self.status.pump_duty),
@@ -478,11 +488,12 @@ impl AioDevice {
             let (rpm, duty) = self.status.fans.get(channel).copied().unwrap_or((None, None));
             let (id, name) = if aggregated {
                 // Kraken podaje jeden wspolny odczyt dla wszystkich wentylatorow.
-                (format!("{}:fans", self.id_prefix), format!("Wentylatory AIO{}", self.name_suffix))
+                let name = format!("{}{}", tr("Wentylatory AIO", "AIO fans"), self.name_suffix);
+                (format!("{}:fans", self.id_prefix), name)
             } else {
                 (
                     format!("{}:fan{}", self.id_prefix, channel + 1),
-                    format!("Wentylator AIO {}{}", channel + 1, self.name_suffix),
+                    format!("{} {}{}", tr("Wentylator AIO", "AIO fan"), channel + 1, self.name_suffix),
                 )
             };
             out.push(FanReading { id, name, kind: FanKind::AioFan, rpm: value(rpm), duty_pct: value(duty) });
@@ -527,7 +538,10 @@ impl AioMonitor {
     pub fn new() -> (Option<Self>, Vec<String>) {
         let api = match HidApi::new() {
             Ok(api) => api,
-            Err(err) => return (None, vec![format!("Nie można odczytać listy urządzeń USB HID: {err}")]),
+            Err(err) => {
+                let issue = tr("Nie można odczytać listy urządzeń USB HID:", "Can't read the USB HID device list:");
+                return (None, vec![format!("{issue} {err}")]);
+            }
         };
         let mut issues = Vec::new();
         let mut devices: Vec<AioDevice> = Vec::new();
@@ -539,14 +553,24 @@ impl AioMonitor {
             let name = model.display_name();
             if matches!(model.protocol(), Protocol::Commander { .. }) && icue_running {
                 issues.push(format!(
-                    "{name}: działa Corsair iCUE - odczyt pominięty, żeby nie zakłócać jego pracy (zamknij iCUE i uruchom program ponownie)"
+                    "{name}: {}",
+                    tr(
+                        "działa Corsair iCUE - odczyt pominięty, żeby nie zakłócać jego pracy (zamknij iCUE i uruchom program ponownie)",
+                        "Corsair iCUE is running - reading skipped to avoid interfering with it (close iCUE and restart the app)",
+                    )
                 ));
                 continue;
             }
             let dev = match api.open_path(info.path()) {
                 Ok(dev) => dev,
                 Err(err) => {
-                    issues.push(format!("{name}: nie można otworzyć urządzenia (zajęte przez inny program?): {err}"));
+                    issues.push(format!(
+                        "{name}: {} {err}",
+                        tr(
+                            "nie można otworzyć urządzenia (zajęte przez inny program?):",
+                            "can't open the device (in use by another program?):",
+                        )
+                    ));
                     continue;
                 }
             };
@@ -587,7 +611,11 @@ impl AioMonitor {
         if devices.is_empty() {
             if issues.is_empty() {
                 issues.push(
-                    "Nie wykryto obsługiwanego AIO (NZXT Kraken X/Z/2023/Elite, Corsair Commander Core/ST)".to_owned(),
+                    tr(
+                        "Nie wykryto obsługiwanego AIO (NZXT Kraken X/Z/2023/Elite, Corsair Commander Core/ST)",
+                        "No supported AIO detected (NZXT Kraken X/Z/2023/Elite, Corsair Commander Core/ST)",
+                    )
+                    .to_owned(),
                 );
             }
             return (None, issues);
@@ -648,14 +676,17 @@ impl AioDevice {
             }
             Protocol::KrakenV3 { has_fans } => {
                 let status = poll_kraken_v3(&self.dev, has_fans, deadline)?
-                    .ok_or("brak odpowiedzi (czy działa NZXT CAM? zamknij go i uruchom program ponownie)")?;
+                    .ok_or(tr(
+                        "brak odpowiedzi (czy działa NZXT CAM? zamknij go i uruchom program ponownie)",
+                        "no response (is NZXT CAM running? close it and restart the app)",
+                    ))?;
                 self.status = status;
                 self.updated = Some(Instant::now());
                 self.fan_channels = if has_fans { vec![0] } else { Vec::new() };
             }
             Protocol::Commander { has_pump } => {
                 let status = poll_commander(&self.dev, has_pump, deadline)
-                    .map_err(|e| format!("brak poprawnej odpowiedzi: {e}"))?;
+                    .map_err(|e| format!("{} {e}", tr("brak poprawnej odpowiedzi:", "no valid response:")))?;
                 let all: Vec<usize> = (0..status.fans.len()).collect();
                 self.fan_channels = commander_connected_fans(&self.dev, has_pump, Instant::now() + INIT_BUDGET)
                     .map(|c| c.into_iter().filter(|i| *i < status.fans.len()).collect())
