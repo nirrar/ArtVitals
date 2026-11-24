@@ -16,6 +16,14 @@ kart liczone są w wielu miejscach bez `Config`). Ustawiana tylko przez `Config:
 `scale` = geometria, `text` = czcionki i wiersze z tekstem; domyślne rozmiary kart w
 `WidgetKind::default_size_at` dzielą się na część stałą i tekstową - przy zmianie układu karty
 aktualizować obie.
+Tłumaczenia (`i18n.rs`): każdy napis widoczny dla użytkownika piszemy w miejscu użycia jako
+`tr("polski", "English")` (zwraca `&'static str`); teksty dynamiczne - `tr` na kawałkach albo
+szablonie, np. `format!("{} {err}", tr("Błąd w config.toml:", "Error in config.toml:"))`.
+Bieżący język jest globalny (atomik jak `text_scale`), ustawia go `Config::sanitize` /
+`Config::apply_language` (pole `language`: auto/pl/en; auto = `GetUserDefaultUILanguage`).
+W testach język jest osobny dla każdego wątku (domyślnie PL). Logów (`log::`) nie tłumaczymy.
+Menu zasobnika odświeża napisy w `Tray::sync_language`; komunikaty czujników powstają przy
+starcie programu (zmiana języka obejmie je po restarcie).
 Konfiguracja: `%APPDATA%\ArtVitals\config.toml` (dawniej `CraftGamingBoard` - migracja w `config.rs`).
 
 ## Konwencje (obowiązkowe)

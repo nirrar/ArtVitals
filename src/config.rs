@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::{LanguageSetting, tr};
 use crate::metrics::Metric;
 
 pub const APP_DIR_NAME: &str = "ArtVitals";
@@ -94,11 +95,11 @@ impl WidgetKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            WidgetKind::Graph => "Wykres",
-            WidgetKind::Gauge => "Wskaźnik",
-            WidgetKind::Bar => "Pasek",
-            WidgetKind::Number => "Liczba",
-            WidgetKind::Fans => "Wentylatory",
+            WidgetKind::Graph => tr("Wykres", "Graph"),
+            WidgetKind::Gauge => tr("Wskaźnik", "Gauge"),
+            WidgetKind::Bar => tr("Pasek", "Bar"),
+            WidgetKind::Number => tr("Liczba", "Number"),
+            WidgetKind::Fans => tr("Wentylatory", "Fans"),
         }
     }
 
@@ -163,9 +164,9 @@ impl ExtraChart {
 
     pub fn label(self) -> &'static str {
         match self {
-            ExtraChart::Value => "Tylko wartość",
-            ExtraChart::Line => "Na wykresie głównym",
-            ExtraChart::Separate => "Osobny wykres",
+            ExtraChart::Value => tr("Tylko wartość", "Value only"),
+            ExtraChart::Line => tr("Na wykresie głównym", "On main graph"),
+            ExtraChart::Separate => tr("Osobny wykres", "Separate graph"),
         }
     }
 }
@@ -217,17 +218,17 @@ impl WidgetIcon {
 
     pub fn label(self) -> &'static str {
         match self {
-            WidgetIcon::None => "Brak",
-            WidgetIcon::Cpu => "Procesor",
-            WidgetIcon::Gpu => "Karta graficzna",
-            WidgetIcon::Memory => "Pamięć",
-            WidgetIcon::Thermometer => "Termometr",
-            WidgetIcon::Fire => "Płomień",
-            WidgetIcon::Gauge => "Licznik (zegary)",
-            WidgetIcon::Lightning => "Błyskawica (moc)",
-            WidgetIcon::Fan => "Wentylator",
-            WidgetIcon::GameController => "Pad (FPS)",
-            WidgetIcon::Timer => "Stoper (czas klatki)",
+            WidgetIcon::None => tr("Brak", "None"),
+            WidgetIcon::Cpu => tr("Procesor", "Processor"),
+            WidgetIcon::Gpu => tr("Karta graficzna", "Graphics card"),
+            WidgetIcon::Memory => tr("Pamięć", "Memory"),
+            WidgetIcon::Thermometer => tr("Termometr", "Thermometer"),
+            WidgetIcon::Fire => tr("Płomień", "Flame"),
+            WidgetIcon::Gauge => tr("Licznik (zegary)", "Gauge (clocks)"),
+            WidgetIcon::Lightning => tr("Błyskawica (moc)", "Lightning (power)"),
+            WidgetIcon::Fan => tr("Wentylator", "Fan"),
+            WidgetIcon::GameController => tr("Pad (FPS)", "Gamepad (FPS)"),
+            WidgetIcon::Timer => tr("Stoper (czas klatki)", "Stopwatch (frame time)"),
         }
     }
 }
@@ -260,10 +261,10 @@ impl WidgetFooter {
 
     pub fn label(self) -> &'static str {
         match self {
-            WidgetFooter::None => "Brak",
-            WidgetFooter::Stats => "Min / śr. / max",
-            WidgetFooter::VramBar => "Pasek VRAM",
-            WidgetFooter::Segments => "Pasek segmentowy",
+            WidgetFooter::None => tr("Brak", "None"),
+            WidgetFooter::Stats => tr("Min / śr. / max", "Min / avg / max"),
+            WidgetFooter::VramBar => tr("Pasek VRAM", "VRAM bar"),
+            WidgetFooter::Segments => tr("Pasek segmentowy", "Segmented bar"),
         }
     }
 }
@@ -533,6 +534,8 @@ pub struct Config {
     pub panel_theme: PanelTheme,
     /// Plik zrzutu z gry (w katalogu konfiguracji) jako tlo podgladu ekranu; pusty = tlo domyslne.
     pub preview_background: String,
+    /// Jezyk interfejsu: auto (wedlug Windows), pl, en.
+    pub language: LanguageSetting,
     pub widgets: Vec<WidgetConfig>,
 }
 
@@ -555,6 +558,7 @@ impl Default for Config {
             font_boost: 0,
             panel_theme: PanelTheme::Dark,
             preview_background: String::new(),
+            language: LanguageSetting::Auto,
             widgets: default_widgets(),
         }
     }
@@ -624,6 +628,11 @@ impl Config {
         set_text_scale(new);
     }
 
+    /// Ustawia globalny jezyk interfejsu wedlug pola `language` (dziala od razu).
+    pub fn apply_language(&self) {
+        crate::i18n::set_current(self.language.resolve());
+    }
+
     pub fn next_widget_id(&self) -> u64 {
         self.widgets.iter().map(|w| w.id).max().unwrap_or(0) + 1
     }
@@ -639,6 +648,7 @@ impl Config {
         // Rozmiary kart w pliku sa juz zapisane dla tej czcionki - tylko ustawiamy skale.
         self.font_boost = self.font_boost.min(MAX_FONT_BOOST);
         set_text_scale(text_scale_for(self.font_boost));
+        self.apply_language();
 
         let mut seen_ids = std::collections::HashSet::new();
         let mut next_id = self.next_widget_id();
@@ -782,6 +792,7 @@ pub fn load_or_create() -> Config {
         Err(err) => log::error!("Nie mozna odczytac {}: {err}", path.display()),
     }
     let config = Config::default();
+    config.apply_language();
     if let Err(err) = save(&config) {
         log::error!("Nie udalo sie zapisac domyslnej konfiguracji: {err}");
     }
@@ -933,6 +944,21 @@ mod tests {
         "#;
         let config = Config::from_toml(text).unwrap();
         assert_eq!((config.widgets[0].warn_threshold, config.widgets[0].crit_threshold), (60.0, 30.0));
+    }
+
+    #[test]
+    fn language_field_is_optional_and_roundtrips() {
+        // Stary plik bez pola `language` -> auto.
+        let old = Config::from_toml("grid_size = 16.0").unwrap();
+        assert_eq!(old.language, LanguageSetting::Auto);
+        let config = Config::from_toml("language = \"en\"").unwrap();
+        assert_eq!(config.language, LanguageSetting::En);
+        // sanitize ustawia biezacy jezyk (w testach - dla tego watku).
+        assert_eq!(crate::i18n::current(), crate::i18n::Lang::En);
+        assert!(config.to_toml().unwrap().contains("language = \"en\""));
+        let config = Config::from_toml("language = \"pl\"").unwrap();
+        assert_eq!(config.language, LanguageSetting::Pl);
+        assert_eq!(crate::i18n::current(), crate::i18n::Lang::Pl);
     }
 
     #[test]

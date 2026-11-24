@@ -3,6 +3,7 @@
 //! Ikona musi powstac w watku z petla komunikatow Win32 (glowny watek eframe).
 //! Zdarzenia menu i klikniecia ikony trafiaja do kolejki i budza UI przez `request_repaint`.
 //! Obrazek ikony jest generowany w kodzie (kafelek z trzema slupkami wykresu).
+//! Napisy menu zaleza od jezyka (`i18n`) - `sync_language` podmienia je po zmianie jezyka.
 //! Zaleznosci: tray-icon (menu z muda).
 
 use std::sync::{Arc, Mutex};
@@ -10,6 +11,8 @@ use std::sync::{Arc, Mutex};
 use eframe::egui;
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+use crate::i18n::{Lang, tr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayCommand {
@@ -20,16 +23,32 @@ pub enum TrayCommand {
 
 pub struct Tray {
     _icon: TrayIcon,
+    settings_item: MenuItem,
     overlay_item: CheckMenuItem,
+    quit_item: MenuItem,
     commands: Arc<Mutex<Vec<TrayCommand>>>,
     shown_overlay_state: Option<bool>,
+    /// Jezyk, w ktorym sa teraz napisy menu.
+    shown_lang: Lang,
+}
+
+fn settings_text() -> &'static str {
+    tr("Otwórz konfigurację", "Open settings")
+}
+
+fn overlay_text() -> &'static str {
+    tr("Overlay widoczny w grze", "Overlay visible in game")
+}
+
+fn quit_text() -> &'static str {
+    tr("Zamknij program", "Quit")
 }
 
 impl Tray {
     pub fn new(ctx: &egui::Context) -> Option<Self> {
-        let settings_item = MenuItem::new("Otwórz konfigurację", true, None);
-        let overlay_item = CheckMenuItem::new("Overlay widoczny w grze", true, true, None);
-        let quit_item = MenuItem::new("Zamknij program", true, None);
+        let settings_item = MenuItem::new(settings_text(), true, None);
+        let overlay_item = CheckMenuItem::new(overlay_text(), true, true, None);
+        let quit_item = MenuItem::new(quit_text(), true, None);
         let menu = Menu::new();
         let appended = menu.append_items(&[
             &settings_item,
@@ -85,7 +104,15 @@ impl Tray {
             }
         }));
 
-        Some(Self { _icon: icon, overlay_item, commands, shown_overlay_state: None })
+        Some(Self {
+            _icon: icon,
+            settings_item,
+            overlay_item,
+            quit_item,
+            commands,
+            shown_overlay_state: None,
+            shown_lang: crate::i18n::current(),
+        })
     }
 
     pub fn take_commands(&self) -> Vec<TrayCommand> {
@@ -97,6 +124,17 @@ impl Tray {
         if self.shown_overlay_state != Some(visible) {
             self.overlay_item.set_checked(visible);
             self.shown_overlay_state = Some(visible);
+        }
+    }
+
+    /// Podmienia napisy menu po zmianie jezyka interfejsu.
+    pub fn sync_language(&mut self) {
+        let lang = crate::i18n::current();
+        if self.shown_lang != lang {
+            self.settings_item.set_text(settings_text());
+            self.overlay_item.set_text(overlay_text());
+            self.quit_item.set_text(quit_text());
+            self.shown_lang = lang;
         }
     }
 

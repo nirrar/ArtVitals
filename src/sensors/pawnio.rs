@@ -12,6 +12,8 @@ use windows::Win32::Foundation::{FreeLibrary, HANDLE, HMODULE};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::core::{HRESULT, HSTRING, PCSTR};
 
+use crate::i18n::tr;
+
 type OpenFn = unsafe extern "system" fn(*mut HANDLE) -> HRESULT;
 type LoadFn = unsafe extern "system" fn(HANDLE, *const u8, usize) -> HRESULT;
 type ExecuteFn =
@@ -44,7 +46,12 @@ unsafe fn proc<T>(library: HMODULE, name: &'static CStr) -> Result<T, String> {
     match ptr {
         // FARPROC i wskaznik do funkcji maja ten sam rozmiar; sygnatury pochodza z PawnIOLib.h.
         Some(f) => Ok(unsafe { std::mem::transmute_copy::<unsafe extern "system" fn() -> isize, T>(&f) }),
-        None => Err(format!("Brak funkcji {} w PawnIOLib.dll", name.to_string_lossy())),
+        None => Err(format!(
+            "{} {} {} PawnIOLib.dll",
+            tr("Brak funkcji", "Missing function"),
+            name.to_string_lossy(),
+            tr("w", "in")
+        )),
     }
 }
 
@@ -54,10 +61,10 @@ impl PawnIo {
     pub fn open(module: &[u8], module_name: &str) -> Result<Self, String> {
         let dll = pawnio_dll_path();
         if !dll.exists() {
-            return Err(format!("Nie znaleziono PawnIO ({})", dll.display()));
+            return Err(format!("{} ({})", tr("Nie znaleziono PawnIO", "PawnIO not found"), dll.display()));
         }
         let library = unsafe { LoadLibraryW(&HSTRING::from(dll.as_os_str())) }
-            .map_err(|err| format!("Nie mozna zaladowac PawnIOLib.dll: {err}"))?;
+            .map_err(|err| format!("{}: {err}", tr("Nie mozna zaladowac PawnIOLib.dll", "Can't load PawnIOLib.dll")))?;
         match unsafe { Self::init(library, module, module_name) } {
             Ok(pawnio) => Ok(pawnio),
             Err(err) => {
@@ -79,7 +86,7 @@ impl PawnIo {
         let hr = unsafe { open(&mut handle) };
         if hr.is_err() {
             return Err(if hr.0 as u32 == E_ACCESS_DENIED {
-                "Wymaga uruchomienia jako administrator".to_owned()
+                tr("Wymaga uruchomienia jako administrator", "Requires running as administrator").to_owned()
             } else {
                 format!("pawnio_open: {hr:?}")
             });
@@ -89,7 +96,11 @@ impl PawnIo {
             unsafe {
                 let _ = close(handle);
             }
-            return Err(format!("Modul {module_name} nie zaladowal sie (inny sprzet?): {hr:?}"));
+            return Err(format!(
+                "{} {module_name} {}: {hr:?}",
+                tr("Modul", "Module"),
+                tr("nie zaladowal sie (inny sprzet?)", "failed to load (different hardware?)")
+            ));
         }
         Ok(Self { library, handle, execute, close })
     }
@@ -119,7 +130,9 @@ impl PawnIo {
     /// Jak `execute`, ale oczekuje dokladnie jednej wartosci wyniku.
     pub fn execute_one(&self, function: &CStr, input: &[u64]) -> Result<u64, String> {
         let out = self.execute(function, input, 1)?;
-        out.first().copied().ok_or_else(|| format!("{}: brak wyniku", function.to_string_lossy()))
+        out.first()
+            .copied()
+            .ok_or_else(|| format!("{}: {}", function.to_string_lossy(), tr("brak wyniku", "no result")))
     }
 }
 

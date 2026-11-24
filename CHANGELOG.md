@@ -12,6 +12,8 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 ### Dodane
 - Tło podglądu ekranu w oknie konfiguracji ze zrzutu z gry (z pliku PNG/JPG/BMP albo ze schowka po
   PrintScreen / Win+Shift+S) - łatwiej ustawić karty względem HUD-u gry. Zrzut jest zapisywany obok konfiguracji.
+- Kolor tła kart: gotowe ciemne odcienie lub własny kolor, przycisk „Wszystkim kartom”
+  (kolor i krycie tła na wszystkich kartach); ramka karty dobierana do koloru.
 - Wersja portable: `config.toml` i `overlay.log` w folderze z plikiem exe, jeśli da się w nim
   zapisywać (inaczej, np. w Program Files, dalej `%APPDATA%\ArtVitals`). Przy pierwszym starcie
   konfiguracja jest kopiowana z `%APPDATA%\ArtVitals`. Zmienna `ARTVITALS_CONFIG_DIR` wymusza katalog.
@@ -40,12 +42,21 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 - Obroty wentylatora GPU NVIDIA (RPM) przez NVAPI, z rezerwą w NVML.
 - Automatyczny wybór karty: dedykowana przed zintegrowaną, przy kilku dedykowanych kolejność
   NVIDIA, AMD, Intel. Okno „Czujniki” wyjaśnia, którego odczytu (hotspot / pamięć) brakuje i dlaczego.
+- Interfejs po angielsku. Język wybierany automatycznie z języka interfejsu Windows (polski system
+  -> polski, każdy inny -> angielski) albo ręcznie: Ogólne -> „Język / Language” (Auto (system) /
+  Polski / English), zmiana działa od razu (okno konfiguracji, menu zasobnika, napisy na kartach).
+  Nowe pole `language` w `config.toml` (`auto` / `pl` / `en`, domyślnie `auto`) - stare pliki
+  wczytują się bez zmian.
+- Przetłumaczone także komunikaty czujników w oknie „Czujniki” (CPU, PawnIO, FPS) i okno
+  „program już działa”. Komunikaty czujników GPU i wentylatorów - jeszcze tylko po polsku.
 
 ### Naprawione
 - Indeksy sensorów NVAPI dobierane jak w LibreHardwareMonitor (prefiks „NVIDIA GeForce RTX 40/50”),
   a dla kart bez „GeForce” w nazwie - wg architektury z NVML. Wcześniej np. „RTX 5000 Ada”
   dostawała układ kart RTX 50 (brak hotspotu, zła temperatura pamięci).
 - Przy kilku kartach NVIDIA odczyty NVAPI pochodzą z tej samej karty co NVML (dopasowanie po szynie PCI).
+- Opis progów kolorów karty FPS: „fPS” -> „FPS” (skróty na początku nazwy metryki zostają
+  wielkimi literami).
 
 ## [0.5.0] - 2026-11-24
 ### Dodane

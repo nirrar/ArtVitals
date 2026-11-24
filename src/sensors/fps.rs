@@ -284,10 +284,10 @@ impl FpsMonitor {
             status = unsafe { StartTraceW(&mut session, &name, buffer.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES) };
         }
         if status == ERROR_ACCESS_DENIED {
-            return Err("Wymaga uruchomienia jako administrator".to_owned());
+            return Err(crate::i18n::tr("Wymaga uruchomienia jako administrator", "Requires running as administrator").to_owned());
         }
         if status != ERROR_SUCCESS {
-            return Err(format!("StartTrace: blad {}", status.0));
+            return Err(format!("StartTrace: {} {}", crate::i18n::tr("blad", "error"), status.0));
         }
 
         for provider in [DXGI_PROVIDER, D3D9_PROVIDER] {
@@ -305,7 +305,7 @@ impl FpsMonitor {
             };
             if status != ERROR_SUCCESS {
                 stop_session();
-                return Err(format!("EnableTraceEx2: blad {}", status.0));
+                return Err(format!("EnableTraceEx2: {} {}", crate::i18n::tr("blad", "error"), status.0));
             }
         }
         // Vulkan/OpenGL - brak DxgKrnl nie blokuje pomiaru gier DirectX.
@@ -325,7 +325,7 @@ impl FpsMonitor {
         let trace = unsafe { OpenTraceW(&mut logfile) };
         if trace.Value == u64::MAX {
             stop_session();
-            return Err("OpenTrace nieudane".to_owned());
+            return Err(crate::i18n::tr("OpenTrace nieudane", "OpenTrace failed").to_owned());
         }
 
         // ProcessTrace blokuje az do zatrzymania sesji - osobny watek.
@@ -339,7 +339,7 @@ impl FpsMonitor {
             })
             .map_err(|err| {
                 stop_session();
-                format!("Watek ETW: {err}")
+                format!("{}: {err}", crate::i18n::tr("Watek ETW", "ETW thread"))
             })?;
 
         log::info!("Pomiar FPS (ETW) uruchomiony");

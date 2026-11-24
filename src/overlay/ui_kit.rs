@@ -310,7 +310,7 @@ pub fn color_swatches_from(ui: &mut egui::Ui, pal: &Palette, color: &mut [u8; 3]
                 changed = true;
             }
         }
-        changed |= ui.color_edit_button_srgb(color).on_hover_text("Własny kolor").changed();
+        changed |= ui.color_edit_button_srgb(color).on_hover_text(crate::i18n::tr("Własny kolor", "Custom color")).changed();
     });
     ui.add_space(8.0);
     changed

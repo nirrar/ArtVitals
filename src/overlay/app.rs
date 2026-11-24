@@ -107,7 +107,7 @@ impl OverlayApp {
             Ok(text) => self.last_saved_text = text,
             Err(err) => {
                 log::error!("Zapis konfiguracji nieudany: {err}");
-                self.status = Some((format!("Nie udało się zapisać konfiguracji: {err}"), true));
+                self.status = Some((format!("{} {err}", crate::i18n::tr("Nie udało się zapisać konfiguracji:", "Couldn't save the configuration:")), true));
             }
         }
     }
@@ -138,11 +138,11 @@ impl OverlayApp {
                 log::info!("Przeladowano config.toml po zmianie z zewnatrz");
                 self.last_saved_text = text;
                 self.apply_config(ctx, new_config);
-                self.status = Some(("Wczytano zmiany z config.toml".to_owned(), false));
+                self.status = Some((crate::i18n::tr("Wczytano zmiany z config.toml", "Loaded changes from config.toml").to_owned(), false));
             }
             Err(err) => {
                 log::warn!("config.toml ma blad, pomijam: {err}");
-                self.status = Some((format!("Błąd w config.toml: {err}"), true));
+                self.status = Some((format!("{} {err}", crate::i18n::tr("Błąd w config.toml:", "Error in config.toml:")), true));
             }
         }
     }
@@ -397,6 +397,7 @@ impl eframe::App for OverlayApp {
         }
         if let Some(tray) = &mut self.tray {
             tray.sync_overlay_visible(self.config.overlay_visible);
+            tray.sync_language();
         }
         self.reload_if_changed(ctx);
     }

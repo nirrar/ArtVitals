@@ -12,6 +12,8 @@ use eframe::egui::{self, Key, Modifiers};
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 
+use crate::i18n::tr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HotkeySlot {
     /// Pokaz/ukryj overlay w grze.
@@ -58,16 +60,20 @@ impl Hotkeys {
     /// Rejestruje nowy skrot w danym miejscu. Przy bledzie (np. skrot zajety przez inny
     /// program albo uzyty juz w drugim miejscu) przywraca poprzedni i zwraca opis problemu.
     pub fn set(&mut self, slot: HotkeySlot, text: &str) -> Result<(), String> {
-        let hotkey: HotKey = text.parse().map_err(|err| format!("Niepoprawny skrót \"{text}\": {err}"))?;
+        let hotkey: HotKey = text.parse().map_err(|err| format!("{} \"{text}\": {err}", tr("Niepoprawny skrót", "Invalid shortcut")))?;
         let Some(manager) = &self.manager else {
-            return Err("Menedżer skrótów nie działa".to_owned());
+            return Err(tr("Menedżer skrótów nie działa", "Shortcut manager is not working").to_owned());
         };
         let i = slot.index();
         if self.current[i] == Some(hotkey) {
             return Ok(());
         }
         if self.current[1 - i] == Some(hotkey) {
-            return Err(format!("Skrót \"{text}\" jest już używany do innej akcji"));
+            return Err(format!(
+                "{} \"{text}\" {}",
+                tr("Skrót", "Shortcut"),
+                tr("jest już używany do innej akcji", "is already used for another action")
+            ));
         }
         let previous = self.current[i].take();
         if let Some(previous) = previous {
@@ -86,7 +92,11 @@ impl Hotkeys {
                     self.current[i] = Some(previous);
                 }
                 log::warn!("Rejestracja skrotu {text} nieudana: {err}");
-                Err(format!("Nie można ustawić \"{text}\" - skrót zajęty przez inny program"))
+                Err(format!(
+                    "{} \"{text}\" - {}",
+                    tr("Nie można ustawić", "Can't set"),
+                    tr("skrót zajęty przez inny program", "shortcut is taken by another program")
+                ))
             }
         }
     }

@@ -11,6 +11,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod i18n;
 mod icons;
 mod metrics;
 mod overlay;
@@ -41,6 +42,8 @@ fn init_logger() {
 }
 
 fn main() -> eframe::Result {
+    // Jezyk systemu do czasu wczytania konfiguracji (komunikat drugiej instancji).
+    i18n::set_current(i18n::system_lang());
     // Blokada instancji przed loggerem - logger czysci plik logu, a druga instancja
     // nie moze skasowac logu dzialajacej.
     let instance = match single_instance::acquire() {

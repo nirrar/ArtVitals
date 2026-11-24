@@ -3,9 +3,12 @@
 //! Kazda metryka ma stale metadane (nazwa, jednostka, zakres skali, domyslne progi, podzespol).
 //! Zakres skali sluzy do normalizacji wykresow i wskaznikow do przedzialu 0..1.
 //! Zegary nie maja progow kolorow (wysoki zegar to nic zlego) - patrz `has_thresholds`.
+//! Nazwy metryk tlumaczone przez `i18n::tr` (krotkie etykiety kart i jednostki sa wspolne).
 //! Zaleznosci: serde (nazwa metryki zapisywana w config.toml).
 
 use serde::{Deserialize, Serialize};
+
+use crate::i18n::tr;
 
 /// Podzespol, z ktorego pochodzi metryka - karta laczy tylko metryki jednego podzespolu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,27 +92,27 @@ impl Metric {
 
     pub fn label(self) -> &'static str {
         match self {
-            Metric::CpuLoad => "Obciążenie CPU",
-            Metric::CpuTemp => "Temperatura CPU",
-            Metric::CpuClock => "Zegar CPU",
-            Metric::CpuPower => "Pobór mocy CPU",
-            Metric::GpuLoad => "Obciążenie GPU",
-            Metric::GpuTemp => "Temperatura GPU",
-            Metric::GpuHotspot => "Hotspot GPU",
-            Metric::GpuMemTemp => "Temperatura pamięci GPU",
-            Metric::GpuClock => "Zegar GPU",
-            Metric::GpuMemClock => "Zegar pamięci GPU",
-            Metric::GpuPower => "Pobór mocy GPU",
-            Metric::GpuFan => "Wentylator GPU",
-            Metric::VramUsage => "Zajętość VRAM",
+            Metric::CpuLoad => tr("Obciążenie CPU", "CPU load"),
+            Metric::CpuTemp => tr("Temperatura CPU", "CPU temperature"),
+            Metric::CpuClock => tr("Zegar CPU", "CPU clock"),
+            Metric::CpuPower => tr("Pobór mocy CPU", "CPU power"),
+            Metric::GpuLoad => tr("Obciążenie GPU", "GPU load"),
+            Metric::GpuTemp => tr("Temperatura GPU", "GPU temperature"),
+            Metric::GpuHotspot => tr("Hotspot GPU", "GPU hotspot"),
+            Metric::GpuMemTemp => tr("Temperatura pamięci GPU", "GPU memory temperature"),
+            Metric::GpuClock => tr("Zegar GPU", "GPU clock"),
+            Metric::GpuMemClock => tr("Zegar pamięci GPU", "GPU memory clock"),
+            Metric::GpuPower => tr("Pobór mocy GPU", "GPU power"),
+            Metric::GpuFan => tr("Wentylator GPU", "GPU fan"),
+            Metric::VramUsage => tr("Zajętość VRAM", "VRAM usage"),
             Metric::Fps => "FPS",
-            Metric::FpsAvg => "Średni FPS",
+            Metric::FpsAvg => tr("Średni FPS", "Average FPS"),
             Metric::FpsLow1 => "1% low FPS",
             Metric::FpsLow01 => "0.1% low FPS",
-            Metric::FrameTime => "Czas klatki",
-            Metric::RamUsage => "Zajętość RAM",
-            Metric::RamUsed => "Użyta pamięć RAM",
-            Metric::FanSpeed => "Wentylatory i AIO",
+            Metric::FrameTime => tr("Czas klatki", "Frame time"),
+            Metric::RamUsage => tr("Zajętość RAM", "RAM usage"),
+            Metric::RamUsed => tr("Użyta pamięć RAM", "RAM used"),
+            Metric::FanSpeed => tr("Wentylatory i AIO", "Fans & AIO"),
         }
     }
 

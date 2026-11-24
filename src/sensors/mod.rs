@@ -18,6 +18,8 @@ mod memory;
 mod nvapi;
 mod pawnio;
 
+use crate::i18n::tr;
+
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -148,16 +150,16 @@ impl SensorHub {
     fn run(self, ctx: eframe::egui::Context) {
         let mut issues = Vec::new();
         let mut cpu_load = cpu_load::CpuLoadSensor::new()
-            .map_err(|err| issues.push(("Obciążenie CPU", err)))
+            .map_err(|err| issues.push((tr("Obciążenie CPU", "CPU load"), err)))
             .ok();
         let mut cpu_temp = cpu_temp::CpuTempSensor::new()
-            .map_err(|err| issues.push(("Temperatura i moc CPU", err)))
+            .map_err(|err| issues.push((tr("Temperatura i moc CPU", "CPU temperature & power"), err)))
             .ok();
         let gpu = gpu::GpuSensor::new().map_err(|err| issues.push(("GPU", err))).ok();
         if let Some(issue) = gpu.as_ref().and_then(|g| g.thermals_issue.clone()) {
-            issues.push(("Hotspot i temperatura pamięci GPU", issue));
+            issues.push((tr("Hotspot i temperatura pamięci GPU", "GPU hotspot & memory temperature"), issue));
         }
-        let mut fps_monitor = fps::FpsMonitor::start().map_err(|err| issues.push(("Pomiar FPS", err))).ok();
+        let mut fps_monitor = fps::FpsMonitor::start().map_err(|err| issues.push((tr("Pomiar FPS", "FPS measurement"), err))).ok();
         let (mut fan_monitor, fan_issues) = fans::FanMonitor::new();
         issues.extend(fan_issues);
         for (source, issue) in &issues {
