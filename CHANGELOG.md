@@ -8,6 +8,22 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
 i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 
+## [Unreleased]
+### Dodane
+- Temperatura i pobór mocy procesorów AMD (wymaga PawnIO i administratora, jak dla Intela):
+  - Ryzen / Threadripper / EPYC (Zen, rodziny 17h, 19h, 1Ah) - temperatura pakietu „Tctl/Tdie”
+    z rejestru SMN THM_TCON_CUR_TMP (z korektą -49 °C i przesunięciem Tdie dla 1600X/1700X/1800X/
+    2700X/Threadripper 1000/2000, jak LibreHardwareMonitor) oraz pobór mocy pakietu z liczników RAPL AMD.
+  - Starsze AMD (rodziny 10h-16h: Phenom, Athlon II, FX, APU A-series; oraz 0Fh - Athlon 64) -
+    tylko temperatura (rejestry PCI / SMU, jak LibreHardwareMonitor i `k10temp`).
+  - Nieobsługiwany producent lub rodzina daje czytelny komunikat w oknie „Czujniki”.
+- Producent i rodzina procesora rozpoznawane przez CPUID; Intel działa bez zmian.
+- Nowe moduły PawnIO.Modules 0.2.12 (to samo wydanie co `IntelMSR.bin`, LGPL-2.1), SHA-256:
+  - `AMDFamily17.bin` - `dae74615761b78bdf064dfb3e136252ddcc6fc727d88f14738d0e5800d427a91`
+  - `AMDFamily10.bin` - `6443080b2968474ffbc38aa4356cc56f9664349fa4b917afdb33027d6bb50525`
+  - `AMDFamily0F.bin` - `a6e11619e87a97820705a6523714f22d676ce44f902631833d4429b89d509d55`
+  - (`IntelMSR.bin` - `30a5a302283de1e080dfee99e686eca91d7e53e911095cb91a320fb961f1ce12`)
+
 ## [0.5.0] - 2026-11-24
 ### Dodane
 - Powiększenie tekstu kart (Ogólne → Overlay → „Powiększenie tekstu”, +0 do +10 pt względem

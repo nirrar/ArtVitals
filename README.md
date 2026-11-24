@@ -101,7 +101,10 @@ Do zrobienia (propozycje):
 ## Licencje zewnętrznych zasobów
 
 - Ikony [Phosphor](https://phosphoricons.com) (Bold) - MIT, `assets/Phosphor.LICENSE.txt`
-- Moduł `IntelMSR.bin` z [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) - LGPL-2.1,
-  `assets/IntelMSR.LICENSE.txt`
+- Moduły `IntelMSR.bin`, `AMDFamily17.bin`, `AMDFamily10.bin`, `AMDFamily0F.bin` z
+  [PawnIO.Modules](https://github.com/namazso/PawnIO.Modules) (wydanie 0.2.12) - LGPL-2.1,
+  `assets/<moduł>.LICENSE.txt`
+- Odczyt temperatury i mocy CPU AMD na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0)
+  i sterownika Linuksa `k10temp`
 - Identyfikatory zdarzeń ETW na podstawie [PresentMon](https://github.com/GameTechDev/PresentMon) (MIT),
   odczyt sensorów NVAPI na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0)

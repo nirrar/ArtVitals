@@ -6,6 +6,7 @@
 //! Zrodla, ktore sie nie zainicjalizowaly (np. temp. CPU bez admina), daja `None`
 //! a powod trafia do `SensorData::issues`, zeby pokazac go w oknie konfiguracji.
 
+mod cpu_amd;
 mod cpu_load;
 mod cpu_temp;
 pub mod fans;
