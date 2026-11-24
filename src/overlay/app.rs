@@ -300,6 +300,11 @@ impl OverlayApp {
                     .map(|w| w.pos[1] + w.size[1] + 8.0)
                     .fold(16.0, f32::max);
                 let mut widget = config::suggested_widget(id, metric, kind, [16.0, y]);
+                if widget.kind == WidgetKind::Fans {
+                    // Wysokosc karty pod liczbe wykrytych wentylatorow.
+                    let rows = widgets::fan_rows(&self.sensors.lock(), None).len();
+                    widget.size[1] = widgets::fans_card_height(rows, config::text_scale());
+                }
                 let rect = Rect::from_min_size(widget.pos.into(), widget.size.into());
                 widget.pos = clamp_to_screen(rect, self.screen).min.into();
                 self.config.widgets.push(widget);
@@ -344,6 +349,11 @@ impl OverlayApp {
                     (e.metric, animated(ctx, self.config.animations, widget.id, i as u8 + 1, data.value(e.metric)))
                 })
                 .collect(),
+            fan_angles: if widget.kind == WidgetKind::Fans {
+                fan_angles(ctx, self.config.animations, widget.id, &widgets::fan_rows(&data, Some(widget)))
+            } else {
+                Vec::new()
+            },
         };
         widgets::paint_widget(&pc, rect, widget, &values);
     }
@@ -459,6 +469,36 @@ fn animated(ctx: &egui::Context, enabled: bool, widget_id: u64, slot: u8, value:
     Some(shown)
 }
 
+/// Katy wirnikow karty "Wentylatory" - calkowane w czasie, zeby zmiana obrotow nie powodowala
+/// skoku polozenia lopatek. Stan trzymany w pamieci egui (wspolnej dla obu okien).
+fn fan_angles(ctx: &egui::Context, enabled: bool, widget_id: u64, rows: &[widgets::FanRow]) -> Vec<f32> {
+    if !enabled {
+        return vec![0.0; rows.len()];
+    }
+    let now = ctx.input(|i| i.time);
+    let mut spinning = false;
+    let angles = rows
+        .iter()
+        .map(|row| {
+            let speed = widgets::rotor_speed(row.rpm, row.duty_pct);
+            spinning |= speed > 0.0;
+            let id = Id::unique(("fan_angle", widget_id, row.id.as_str()));
+            ctx.data_mut(|data| {
+                let (angle, last) = data.get_temp_mut_or_insert_with(id, || (0.0f32, now));
+                // Ograniczenie kroku - po dluzszej przerwie w rysowaniu wirnik nie "przeskakuje".
+                let dt = (now - *last).clamp(0.0, 0.1) as f32;
+                *angle = (*angle + speed * dt) % std::f32::consts::TAU;
+                *last = now;
+                *angle
+            })
+        })
+        .collect();
+    if spinning {
+        ctx.request_repaint_after(VALUE_ANIMATION_FRAME);
+    }
+    angles
+}
+
 /// Zmiana metryki: progi zawsze wracaja do domyslnych (inne jednostki), a kolor i ikona
 /// tylko wtedy, gdy uzytkownik ich wczesniej nie zmienial.
 pub(super) fn change_metric(widget: &mut WidgetConfig, metric: Metric) {
@@ -475,6 +515,13 @@ pub(super) fn change_metric(widget: &mut WidgetConfig, metric: Metric) {
     widget.metric = metric;
     // Zmiana podzespolu (np. CPU -> GPU) usuwa dodatki, ktore przestaly pasowac.
     widget.drop_mismatched();
+    // Wentylatory maja wlasny typ karty - przejscie z/do nich zmienia typ.
+    if !widget.kind.fits(metric) {
+        widget.set_kind(WidgetKind::for_metric(metric)[0]);
+        if widget.kind == WidgetKind::Fans {
+            widget.footer = crate::config::WidgetFooter::None;
+        }
+    }
 }
 
 pub(super) fn clamp_to_screen(rect: Rect, screen: Rect) -> Rect {

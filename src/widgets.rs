@@ -29,6 +29,8 @@ pub struct WidgetValues {
     pub primary: Option<f32>,
     /// Dodatkowe metryki karty w kolejnosci z konfiguracji.
     pub extras: Vec<(Metric, Option<f32>)>,
+    /// Karta "Wentylatory": kat obrotu wirnika (rad) dla kolejnych wierszy `fan_rows`.
+    pub fan_angles: Vec<f32>,
 }
 
 pub struct PaintContext<'a> {
@@ -208,7 +210,9 @@ pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, va
     // Domyslny rozmiar uwzglednia powiekszenie tekstu - karta dopasowana do czcionki ma base_scale 1.
     let ts = config::text_scale();
     let default = widget.kind.default_size_at(ts);
-    let base_scale = (widget.size[0] / default[0]).min(widget.size[1] / default[1]).clamp(0.6, 3.0);
+    // Karta "Wentylatory" ma wysokosc zalezna od liczby wierszy, wiec skale wyznacza tylko szerokosc.
+    let height_ratio = if widget.kind == WidgetKind::Fans { f32::INFINITY } else { widget.size[1] / default[1] };
+    let base_scale = (widget.size[0] / default[0]).min(height_ratio).clamp(0.6, 3.0);
     // `scale` - geometria (marginesy, wykresy, paski), `text` - czcionki i wiersze z tekstem.
     let scale = base_scale * pc.zoom;
     let text = scale * ts;
@@ -232,8 +236,255 @@ pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, va
         WidgetKind::Number => paint_number_card(pc, inner, widget, values, scale, text),
         WidgetKind::Gauge => paint_gauge_card(pc, inner, widget, values, scale, text),
         WidgetKind::Bar => paint_bar_card(pc, inner, widget, values, scale, text),
+        WidgetKind::Fans => paint_fans_card(pc, inner, widget, values, scale, text),
     }
 }
+
+/// Rodzaj wiersza na karcie "Wentylatory" (wplywa na kolor i skale paska).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FanRowKind {
+    Pump,
+    AioFan,
+    Board,
+    Gpu,
+}
+
+/// Jeden wiersz karty "Wentylatory" - wentylator plyty/AIO albo wentylator GPU.
+#[derive(Debug, Clone)]
+pub struct FanRow {
+    pub id: String,
+    pub name: String,
+    pub kind: FanRowKind,
+    pub rpm: Option<f32>,
+    pub duty_pct: Option<f32>,
+}
+
+/// Identyfikator wiersza wentylatora GPU (do listy ukrytych w konfiguracji).
+pub const GPU_FAN_ID: &str = "gpu:fan";
+/// Wizualne spowolnienie wirnika - prawdziwe 1500 RPM to 25 obr./s, czego oko nie sledzi.
+/// Przy 0.1 wirnik 1500 RPM robi 2.5 obrotu na sekunde, a roznice predkosci sa widoczne.
+const ROTOR_VISUAL_SPEED: f32 = 0.1;
+/// Najszybszy obrot animacji (rad/s), zeby szybkie pompy nie zamienialy sie w rozmyty krazek.
+const ROTOR_MAX_RAD_S: f32 = 30.0;
+
+/// Wiersze karty "Wentylatory": pompy i wentylatory AIO, plyta, na koncu wentylator GPU.
+/// `widget` = pomija wentylatory ukryte na tej karcie; `None` = wszystkie (lista w ustawieniach).
+pub fn fan_rows(data: &SensorData, widget: Option<&WidgetConfig>) -> Vec<FanRow> {
+    use crate::sensors::fans::FanKind;
+    let mut rows: Vec<FanRow> = data
+        .fans
+        .fans
+        .iter()
+        .map(|fan| FanRow {
+            id: fan.id.clone(),
+            name: fan.name.clone(),
+            kind: match fan.kind {
+                FanKind::Pump => FanRowKind::Pump,
+                FanKind::AioFan => FanRowKind::AioFan,
+                FanKind::Board => FanRowKind::Board,
+            },
+            rpm: fan.rpm,
+            duty_pct: fan.duty_pct,
+        })
+        .collect();
+    let gpu_fan_pct = data.value(Metric::GpuFan);
+    if data.gpu_fan_rpm.is_some() || gpu_fan_pct.is_some() {
+        rows.push(FanRow {
+            id: GPU_FAN_ID.to_owned(),
+            name: "GPU".to_owned(),
+            kind: FanRowKind::Gpu,
+            rpm: data.gpu_fan_rpm,
+            duty_pct: gpu_fan_pct,
+        });
+    }
+    if let Some(widget) = widget {
+        rows.retain(|row| !widget.hidden_fans.contains(&row.id));
+    }
+    rows
+}
+
+/// Predkosc katowa animacji wirnika (rad/s). Bez RPM (np. wentylator GPU tylko z %) predkosc
+/// jest szacowana z wypelnienia PWM - to tylko animacja, liczba RPM i tak pokazuje "—".
+pub fn rotor_speed(rpm: Option<f32>, duty_pct: Option<f32>) -> f32 {
+    let rpm = rpm.or(duty_pct.map(|duty| duty * 30.0)).unwrap_or(0.0).max(0.0);
+    (rpm / 60.0 * std::f32::consts::TAU * ROTOR_VISUAL_SPEED).min(ROTOR_MAX_RAD_S)
+}
+
+/// Wysokosc karty "Wentylatory" mieszczacej `rows` wierszy przy skali tekstu `ts`.
+pub fn fans_card_height(rows: usize, ts: f32) -> f32 {
+    16.0 + (FANS_TITLE_H + FANS_ROW_H * rows.max(1) as f32) * ts
+}
+
+const FANS_TITLE_H: f32 = 17.0;
+const FANS_ROW_H: f32 = 20.0;
+
+fn fan_row_color(kind: FanRowKind) -> Color32 {
+    match kind {
+        FanRowKind::Pump => Color32::from_rgb(64, 190, 255),
+        FanRowKind::AioFan => Color32::from_rgb(110, 220, 230),
+        FanRowKind::Board => Color32::from_rgb(150, 200, 255),
+        FanRowKind::Gpu => Color32::from_rgb(120, 226, 84),
+    }
+}
+
+/// Gorna granica paska obrotow - pompy kreca sie szybciej niz wentylatory.
+fn fan_row_max_rpm(kind: FanRowKind) -> f32 {
+    if kind == FanRowKind::Pump { 4000.0 } else { 3000.0 }
+}
+
+fn paint_fans_card(
+    pc: &PaintContext<'_>,
+    area: Rect,
+    widget: &WidgetConfig,
+    values: &WidgetValues,
+    scale: f32,
+    text: f32,
+) {
+    let op = pc.opacity;
+    let rows = fan_rows(pc.data, Some(widget));
+    let mut top = area.top();
+    if widget.show_title {
+        let title_size = 11.0 * text;
+        let mut title_left = area.left();
+        if widget.icon != WidgetIcon::None {
+            let icon_rect = Rect::from_min_size(area.left_top(), Vec2::splat(title_size * 1.25));
+            paint_icon(pc.painter, icon_rect, widget.icon, alpha(accent_color(widget), op));
+            title_left = icon_rect.right() + 5.0 * scale;
+        }
+        pc.painter.text(
+            pos2(title_left, top),
+            Align2::LEFT_TOP,
+            widget.display_title(),
+            FontId::proportional(title_size),
+            alpha(TEXT_PRIMARY, op),
+        );
+        if let Some(liquid) = pc.data.fans.liquid_temp_c {
+            let value = pc.painter.text(
+                pos2(area.right(), top),
+                Align2::RIGHT_TOP,
+                format!("{liquid:.1}°C"),
+                FontId::proportional(title_size),
+                alpha(fan_row_color(FanRowKind::Pump), op),
+            );
+            pc.painter.text(
+                pos2(value.left() - 5.0 * scale, value.center().y),
+                Align2::RIGHT_CENTER,
+                "CIECZ",
+                FontId::proportional(9.0 * text),
+                alpha(TEXT_MUTED, op),
+            );
+        }
+        top += FANS_TITLE_H * text;
+    }
+
+    if rows.is_empty() {
+        pc.painter.text(
+            pos2(area.left(), top + 4.0 * scale),
+            Align2::LEFT_TOP,
+            "Brak wykrytych wentylatorów",
+            FontId::proportional(9.5 * text),
+            alpha(TEXT_MUTED, op),
+        );
+        return;
+    }
+
+    // Wiersze dzielą dostepna wysokosc, ale nie rosna ponad 1.6x domyslnej wysokosci.
+    let available = (area.bottom() - top).max(0.0);
+    let max_rows = ((available / (FANS_ROW_H * text * 0.75)).floor() as usize).max(1);
+    let shown = rows.len().min(max_rows);
+    let row_h = (available / shown as f32).min(FANS_ROW_H * text * 1.6);
+    for (i, row) in rows.iter().take(shown).enumerate() {
+        let rect = Rect::from_min_size(pos2(area.left(), top + row_h * i as f32), vec2(area.width(), row_h));
+        let angle = values.fan_angles.get(i).copied().unwrap_or(0.0);
+        paint_fan_row(pc, rect, row, angle, scale, text);
+    }
+}
+
+fn paint_fan_row(pc: &PaintContext<'_>, rect: Rect, row: &FanRow, angle: f32, scale: f32, text: f32) {
+    let op = pc.opacity;
+    let spinning = rotor_speed(row.rpm, row.duty_pct) > 0.0;
+    let color = if spinning { fan_row_color(row.kind) } else { TEXT_MUTED };
+    let rotor_r = (rect.height() * 0.42).min(11.0 * text);
+    let center = pos2(rect.left() + rotor_r, rect.center().y);
+    paint_rotor(pc.painter, center, rotor_r, angle, alpha(color, op), row.kind == FanRowKind::Pump);
+
+    let text_left = center.x + rotor_r + 6.0 * scale;
+    let value = match row.rpm {
+        Some(rpm) => format!("{rpm:.0}"),
+        None => "—".to_owned(),
+    };
+    let value_rect = pc.painter.text(
+        pos2(rect.right() - 26.0 * text, rect.center().y),
+        Align2::RIGHT_CENTER,
+        value,
+        FontId::proportional(11.0 * text),
+        alpha(if spinning { TEXT_PRIMARY } else { TEXT_MUTED }, op),
+    );
+    pc.painter.text(
+        pos2(rect.right(), rect.center().y),
+        Align2::RIGHT_CENTER,
+        "RPM",
+        FontId::proportional(8.0 * text),
+        alpha(TEXT_MUTED, op),
+    );
+    let mut name_right = value_rect.left() - 6.0 * scale;
+    if let Some(duty) = row.duty_pct {
+        let duty_rect = pc.painter.text(
+            pos2(name_right, rect.center().y),
+            Align2::RIGHT_CENTER,
+            format!("{duty:.0}%"),
+            FontId::proportional(9.0 * text),
+            alpha(TEXT_MUTED, op),
+        );
+        name_right = duty_rect.left() - 6.0 * scale;
+    }
+    let name_painter = pc.painter.with_clip_rect(Rect::from_min_max(
+        pos2(text_left, rect.top()),
+        pos2(name_right.max(text_left), rect.bottom()),
+    ));
+    let has_bar = rect.height() >= 15.0 * text;
+    let name_y = if has_bar { rect.center().y - 2.5 * scale } else { rect.center().y };
+    name_painter.text(
+        pos2(text_left, name_y),
+        Align2::LEFT_CENTER,
+        &row.name,
+        FontId::proportional(9.5 * text),
+        alpha(TEXT_PRIMARY, op),
+    );
+    // Cienki pasek obrotow pod nazwa (gdy wiersz jest dosc wysoki).
+    if has_bar && name_right - text_left > 12.0 {
+        let fraction = row.rpm.map(|rpm| (rpm / fan_row_max_rpm(row.kind)).clamp(0.0, 1.0)).unwrap_or(0.0);
+        let bar = Rect::from_min_max(
+            pos2(text_left, rect.center().y + 5.0 * text),
+            pos2(name_right, rect.center().y + 7.5 * text),
+        );
+        paint_progress(pc.painter, bar, fraction, alpha(color, op), op);
+    }
+}
+
+/// Wirnik: obrecz, piec wygietych lopatek i piasta; `angle` w radianach.
+/// Pompa ma lopatki prostsze i grubsza piaste - odroznia sie od wentylatora.
+fn paint_rotor(painter: &Painter, center: Pos2, radius: f32, angle: f32, color: Color32, pump: bool) {
+    let polar = |r: f32, a: f32| center + vec2(a.cos(), a.sin()) * r;
+    painter.circle_stroke(center, radius, Stroke::new((radius * 0.09).max(0.8), color.gamma_multiply(0.55)));
+    const BLADES: usize = 5;
+    let hub = radius * if pump { 0.38 } else { 0.26 };
+    let tip = radius * 0.86;
+    let sweep = if pump { 0.35 } else { 0.62 };
+    for i in 0..BLADES {
+        let a = angle + i as f32 * std::f32::consts::TAU / BLADES as f32;
+        // Lopatka jako wypukly czworokat wygiety w kierunku obrotu.
+        let points = vec![
+            polar(hub, a - 0.12),
+            polar(tip * 0.8, a + sweep * 0.35),
+            polar(tip, a + sweep),
+            polar(hub, a + 0.42),
+        ];
+        painter.add(eframe::egui::Shape::convex_polygon(points, color.gamma_multiply(0.85), Stroke::NONE));
+    }
+    painter.circle_filled(center, hub, color);
+}
+
 
 /// Naglowek: ikona + tytul, pod tytulem duza wartosc z jednostka, z prawej druga wartosc.
 /// Zwraca dolna krawedz naglowka.

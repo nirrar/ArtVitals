@@ -14,6 +14,8 @@ pub enum Device {
     Gpu,
     /// Pamiec operacyjna (RAM).
     Memory,
+    /// Wentylatory plyty i AIO.
+    Cooling,
     /// Klatki mierzonej gry (FPS, czas klatki).
     Game,
 }
@@ -41,10 +43,12 @@ pub enum Metric {
     FrameTime,
     RamUsage,
     RamUsed,
+    /// Obroty wentylatorow i AIO - karta "Wentylatory" pokazuje wszystkie, wartosc = najszybszy.
+    FanSpeed,
 }
 
 impl Metric {
-    pub const ALL: [Metric; 20] = [
+    pub const ALL: [Metric; 21] = [
         Metric::CpuLoad,
         Metric::CpuTemp,
         Metric::CpuClock,
@@ -65,6 +69,7 @@ impl Metric {
         Metric::FrameTime,
         Metric::RamUsage,
         Metric::RamUsed,
+        Metric::FanSpeed,
     ];
 
     /// Pozycja w `ALL` - indeks w tablicach odczytow czujnikow.
@@ -77,6 +82,7 @@ impl Metric {
             Metric::CpuLoad | Metric::CpuTemp | Metric::CpuClock | Metric::CpuPower => Device::Cpu,
             Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 | Metric::FrameTime => Device::Game,
             Metric::RamUsage | Metric::RamUsed => Device::Memory,
+            Metric::FanSpeed => Device::Cooling,
             _ => Device::Gpu,
         }
     }
@@ -103,6 +109,7 @@ impl Metric {
             Metric::FrameTime => "Czas klatki",
             Metric::RamUsage => "Zajętość RAM",
             Metric::RamUsed => "Użyta pamięć RAM",
+            Metric::FanSpeed => "Wentylatory i AIO",
         }
     }
 
@@ -129,6 +136,7 @@ impl Metric {
             Metric::FrameTime => "FRAME TIME",
             Metric::RamUsage => "RAM",
             Metric::RamUsed => "RAM",
+            Metric::FanSpeed => "FANS",
         }
     }
 
@@ -140,6 +148,7 @@ impl Metric {
             Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => "",
             Metric::FrameTime => " ms",
             Metric::RamUsed => " GB",
+            Metric::FanSpeed => " RPM",
             _ => "%",
         }
     }
@@ -160,13 +169,14 @@ impl Metric {
             Metric::FrameTime => (0.0, 50.0),
             // Skala stala (typowy PC do gier); wykres i tak pokazuje zmiany, procent jest w RamUsage.
             Metric::RamUsed => (0.0, 64.0),
+            Metric::FanSpeed => (0.0, 3000.0),
             _ => (0.0, 100.0),
         }
     }
 
     /// Czy metryka ma progi kolorow (zegary nie maja - wysoki zegar to nic zlego).
     pub fn has_thresholds(self) -> bool {
-        !matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed)
+        !matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed | Metric::FanSpeed)
     }
 
     /// Czy wieksza wartosc jest gorsza (temperatura, obciazenie). Dla FPS jest odwrotnie -
@@ -200,7 +210,7 @@ impl Metric {
             Metric::FrameTime => (25.0, 40.0),
             Metric::RamUsage => (80.0, 92.0),
             // Ilosc GB zalezy od wielkosci pamieci - kolor ostrzezenia daje RamUsage.
-            Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed => {
+            Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed | Metric::FanSpeed => {
                 let (_, max) = self.range();
                 (max * 2.0, max * 2.0)
             }

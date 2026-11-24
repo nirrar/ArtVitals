@@ -752,6 +752,7 @@ impl OverlayApp {
                     WidgetKind::Bar => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako mniejsze paski pod głównym.",
                     WidgetKind::Gauge => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wewnętrzne pierścienie wskaźnika.",
                     WidgetKind::Number => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wartości z prawej.",
+                    WidgetKind::Fans => "Karta pokazuje obroty wszystkich wykrytych wentylatorów, pompy i temperaturę cieczy AIO. Poniżej wybierzesz, które pokazać.",
                 }),
                 |ui| {
                     ui_kit::row(ui, pal, "Główna", |ui| {
@@ -829,12 +830,48 @@ impl OverlayApp {
                 },
             );
 
-            ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
-                padded(ui, |ui| {
-                    let options: Vec<(WidgetKind, &str)> = WidgetKind::ALL.iter().map(|k| (*k, k.label())).collect();
-                    ui_kit::segmented(ui, pal, &mut new_kind, &options);
+            if w.kind == WidgetKind::Fans {
+                let data = self.sensors.lock();
+                let rows = widgets::fan_rows(&data, None);
+                drop(data);
+                ui_kit::group(
+                    ui,
+                    pal,
+                    Some("Wentylatory"),
+                    Some("Wentylatory płyty wymagają PawnIO i uruchomienia jako administrator. AIO są czytane przez USB - program producenta (NZXT CAM, iCUE) może je blokować."),
+                    |ui| {
+                        if rows.is_empty() {
+                            padded(ui, |ui| {
+                                ui.label(RichText::new("Nie wykryto wentylatorów.").color(pal.secondary));
+                            });
+                        }
+                        for (i, row) in rows.iter().enumerate() {
+                            if i > 0 {
+                                ui_kit::divider(ui, pal);
+                            }
+                            let mut shown = !w.hidden_fans.contains(&row.id);
+                            if ui_kit::row(ui, pal, &row.name, |ui| ui_kit::toggle(ui, pal, &mut shown)).changed() {
+                                if shown {
+                                    w.hidden_fans.retain(|id| *id != row.id);
+                                } else {
+                                    w.hidden_fans.push(row.id.clone());
+                                }
+                                changed = true;
+                            }
+                        }
+                    },
+                );
+            }
+
+            let kinds = WidgetKind::for_metric(w.metric);
+            if kinds.len() > 1 {
+                ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
+                    padded(ui, |ui| {
+                        let options: Vec<(WidgetKind, &str)> = kinds.iter().map(|k| (*k, k.label())).collect();
+                        ui_kit::segmented(ui, pal, &mut new_kind, &options);
+                    });
                 });
-            });
+            }
 
             ui_kit::group(ui, pal, Some("Wygląd"), None, |ui| {
                 ui_kit::row(ui, pal, "Ikona", |ui| {
@@ -844,14 +881,16 @@ impl OverlayApp {
                         }
                     });
                 });
-                ui_kit::divider(ui, pal);
-                ui_kit::row(ui, pal, "Stopka", |ui| {
-                    egui::ComboBox::from_id_salt("footer").selected_text(w.footer.label()).show_ui(ui, |ui| {
-                        for footer in WidgetFooter::ALL.into_iter().filter(|f| f.fits(w.metric)) {
-                            changed |= ui.selectable_value(&mut w.footer, footer, footer.label()).changed();
-                        }
+                if w.kind != WidgetKind::Fans {
+                    ui_kit::divider(ui, pal);
+                    ui_kit::row(ui, pal, "Stopka", |ui| {
+                        egui::ComboBox::from_id_salt("footer").selected_text(w.footer.label()).show_ui(ui, |ui| {
+                            for footer in WidgetFooter::ALL.into_iter().filter(|f| f.fits(w.metric)) {
+                                changed |= ui.selectable_value(&mut w.footer, footer, footer.label()).changed();
+                            }
+                        });
                     });
-                });
+                }
                 ui_kit::divider(ui, pal);
                 changed |= ui_kit::row(ui, pal, "Pokaż tytuł", |ui| ui_kit::toggle(ui, pal, &mut w.show_title)).changed();
                 if w.show_title {
@@ -994,12 +1033,18 @@ impl OverlayApp {
         let stage = ui_kit::preview_stage(ui, preview_stage_height(ui.available_width(), &sample));
         self.paint_preview(ui, stage, &sample);
 
-        ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
-            padded(ui, |ui| {
-                let options: Vec<(WidgetKind, &str)> = WidgetKind::ALL.iter().map(|k| (*k, k.label())).collect();
-                ui_kit::segmented(ui, pal, &mut self.settings.add_kind, &options);
+        let kinds = WidgetKind::for_metric(self.settings.add_metric);
+        if !kinds.contains(&self.settings.add_kind) {
+            self.settings.add_kind = kinds[0];
+        }
+        if kinds.len() > 1 {
+            ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
+                padded(ui, |ui| {
+                    let options: Vec<(WidgetKind, &str)> = kinds.iter().map(|k| (*k, k.label())).collect();
+                    ui_kit::segmented(ui, pal, &mut self.settings.add_kind, &options);
+                });
             });
-        });
+        }
         ui_kit::group(ui, pal, Some("Co pokazać"), None, |ui| {
             for (i, metric) in Metric::ALL.into_iter().enumerate() {
                 if i > 0 {
@@ -1438,7 +1483,7 @@ fn widget_context_menu(
         ui.close();
     }
     ui.menu_button("Typ karty", |ui| {
-        for option in WidgetKind::ALL {
+        for option in WidgetKind::for_metric(metric) {
             if ui.selectable_label(option == kind, option.label()).clicked() {
                 actions.push(WidgetAction::SetKind(id, option));
                 ui.close();

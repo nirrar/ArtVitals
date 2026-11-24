@@ -67,15 +67,28 @@ pub enum WidgetKind {
     Bar,
     /// Duza liczba z mini-wykresem pod spodem.
     Number,
+    /// Lista wentylatorow i AIO z animowanymi wirnikami (tylko dla metryki `FanSpeed`).
+    Fans,
 }
 
 impl WidgetKind {
-    pub const ALL: [WidgetKind; 4] = [
+    pub const ALL: [WidgetKind; 5] = [
         WidgetKind::Graph,
         WidgetKind::Gauge,
         WidgetKind::Bar,
         WidgetKind::Number,
+        WidgetKind::Fans,
     ];
+
+    /// Czy typ karty pasuje do metryki: wentylatory maja wlasny typ i nie pasuja do innych.
+    pub fn fits(self, metric: Metric) -> bool {
+        (self == WidgetKind::Fans) == (metric == Metric::FanSpeed)
+    }
+
+    /// Typy kart dostepne dla metryki.
+    pub fn for_metric(metric: Metric) -> Vec<WidgetKind> {
+        Self::ALL.into_iter().filter(|k| k.fits(metric)).collect()
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -83,6 +96,7 @@ impl WidgetKind {
             WidgetKind::Gauge => "Wskaźnik",
             WidgetKind::Bar => "Pasek",
             WidgetKind::Number => "Liczba",
+            WidgetKind::Fans => "Wentylatory",
         }
     }
 
@@ -104,6 +118,8 @@ impl WidgetKind {
             // Naglowek (tytul + wartosc) + pasek + stopka musza sie zmiescic bez nakladania.
             WidgetKind::Bar => (16.0, 184.0, 35.0, 45.0),
             WidgetKind::Number => (16.0, 116.0, 16.0, 76.0),
+            // Naglowek + kilka wierszy wentylatorow (karta dopasowuje wiersze do wysokosci).
+            WidgetKind::Fans => (16.0, 184.0, 16.0, 104.0),
         };
         [fw + tw * ts, fh + th * ts]
     }
@@ -286,6 +302,8 @@ pub struct WidgetConfig {
     /// Krycie tla karty 0..1 (0 = tylko sam wykres bez tla).
     pub background_opacity: f32,
     pub show_title: bool,
+    /// Karta "Wentylatory": identyfikatory ukrytych wentylatorow (`FanReading::id`, `gpu:fan`).
+    pub hidden_fans: Vec<String>,
 }
 
 impl Default for WidgetConfig {
@@ -315,6 +333,7 @@ impl WidgetConfig {
             crit_threshold: crit,
             background_opacity: 0.82,
             show_title: true,
+            hidden_fans: Vec::new(),
         }
     }
 
@@ -460,6 +479,7 @@ pub fn default_accent(metric: Metric) -> [u8; 3] {
         Metric::FpsLow01 => [255, 140, 66],
         Metric::FrameTime => [120, 226, 84],
         Metric::RamUsage | Metric::RamUsed => [64, 200, 255],
+        Metric::FanSpeed => [90, 200, 255],
     }
 }
 
@@ -476,6 +496,7 @@ pub fn default_icon(metric: Metric) -> WidgetIcon {
         Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => WidgetIcon::GameController,
         Metric::FrameTime => WidgetIcon::Timer,
         Metric::RamUsage | Metric::RamUsed => WidgetIcon::Memory,
+        Metric::FanSpeed => WidgetIcon::Fan,
     }
 }
 
@@ -534,6 +555,8 @@ impl Default for Config {
 /// Nowa karta z sensownymi dodatkami: obciazenie od razu z temperatura,
 /// GPU z paskiem VRAM, reszta ze statystykami min/sr/max.
 pub fn suggested_widget(id: u64, metric: Metric, kind: WidgetKind, pos: [f32; 2]) -> WidgetConfig {
+    // Typ musi pasowac do metryki (wentylatory = tylko karta "Wentylatory").
+    let kind = if kind.fits(metric) { kind } else { WidgetKind::for_metric(metric)[0] };
     let widget = WidgetConfig::new(id, metric, kind, pos);
     let widget = match metric {
         Metric::CpuLoad => widget.with_extra(Metric::CpuTemp, ExtraChart::Line),
@@ -547,7 +570,7 @@ pub fn suggested_widget(id: u64, metric: Metric, kind: WidgetKind, pos: [f32; 2]
         _ => widget,
     };
     let footer = match (metric, kind) {
-        (_, WidgetKind::Gauge) => WidgetFooter::None,
+        (_, WidgetKind::Gauge | WidgetKind::Fans) => WidgetFooter::None,
         (Metric::GpuLoad, _) => WidgetFooter::VramBar,
         _ => WidgetFooter::Stats,
     };
@@ -635,6 +658,9 @@ impl Config {
                 std::mem::swap(&mut widget.warn_threshold, &mut widget.crit_threshold);
             }
             widget.title.truncate(64);
+            if !widget.kind.fits(widget.metric) {
+                widget.set_kind(WidgetKind::for_metric(widget.metric)[0]);
+            }
             // Migracja starego pola `secondary` + porzadki w liscie dodatkowych metryk.
             if let Some(legacy) = widget.legacy_secondary.take()
                 && !widget.has_extra(legacy)

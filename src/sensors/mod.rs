@@ -174,6 +174,7 @@ impl SensorHub {
             let gpu_reading = gpu.as_ref().map(|g| g.read()).unwrap_or_default();
             let ram = memory::read();
             let fan_snapshot = fan_monitor.read();
+            let fastest_fan = fan_snapshot.fans.iter().filter_map(|f| f.rpm).reduce(f32::max);
             // Sredni FPS i lows z ostatnich N sekund (ustawienie "Okno sredniej i lows").
             let window_s = self.fps_window_ms.load(Ordering::Relaxed) as f64 / 1000.0;
             let frames = fps_monitor.as_mut().map(|m| m.read(window_s)).unwrap_or_default();
@@ -207,6 +208,7 @@ impl SensorHub {
                     (Metric::FrameTime, frames.frame_time_ms),
                     (Metric::RamUsage, ram.usage_pct),
                     (Metric::RamUsed, ram.used_gb),
+                    (Metric::FanSpeed, fastest_fan.or(gpu_reading.fan_rpm)),
                 ];
                 for (metric, value) in values {
                     data.push(metric, value, history_len);

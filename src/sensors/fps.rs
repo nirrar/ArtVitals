@@ -4,7 +4,12 @@
 //! - Microsoft-Windows-DXGI {CA11C036-0102-4A2D-A6AD-F03CFED5D3C9}: Present_Start (42)
 //!   i PresentMultiplaneOverlay_Start (55) - DirectX 10/11/12 (i Vulkan/OpenGL, gdy sterownik
 //!   prezentuje przez DXGI); prezentacje z flaga DXGI_PRESENT_TEST sa pomijane (nic nie wyswietlaja),
-//! - Microsoft-Windows-D3D9 {783ACA0A-790E-4D7F-8451-AA850511C6B9}: Present_Start (1) - DirectX 9.
+//! - Microsoft-Windows-D3D9 {783ACA0A-790E-4D7F-8451-AA850511C6B9}: Present_Start (1) - DirectX 9,
+//! - Microsoft-Windows-DxgKrnl {802EC45A-1E99-4B83-9920-87C98277BA9D}: Present_Info (0xB8) -
+//!   prezentacje przez jadro grafiki (D3DKMTPresent), czyli tez Vulkan i OpenGL, ktore omijaja DXGI.
+//!   Filtrowane po ID zdarzenia (jak w PresentMon), bo slowo kluczowe Base wlacza bardzo duzo zdarzen.
+//!   Gry DirectX generuja zdarzenia z obu warstw - dla procesu, ktory wysyla Present z DXGI/D3D9,
+//!   zdarzenia DxgKrnl sa pomijane (bez podwojnego liczenia klatek).
 //!
 //! Identyfikatory wziete z PresentMon (PresentData/ETW/*.h, licencja MIT).
 //! Czas klatki = odstep miedzy kolejnymi prezentacjami procesu ("MsBetweenPresents").
@@ -17,10 +22,12 @@ use std::sync::{Arc, Mutex};
 
 use windows::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, ERROR_SUCCESS};
 use windows::Win32::System::Diagnostics::Etw::{
-    CONTROLTRACE_HANDLE, CloseTrace, ControlTraceW, EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_HEADER_FLAG_32_BIT_HEADER,
-    EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW, EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE,
-    EnableTraceEx2, OpenTraceW, PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_REAL_TIME, PROCESSTRACE_HANDLE,
-    ProcessTrace, StartTraceW, TRACE_LEVEL_INFORMATION, WNODE_FLAG_TRACED_GUID,
+    CONTROLTRACE_HANDLE, CloseTrace, ControlTraceW, ENABLE_TRACE_PARAMETERS, ENABLE_TRACE_PARAMETERS_VERSION_2,
+    EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_ENABLE_PROPERTY_IGNORE_KEYWORD_0, EVENT_FILTER_DESCRIPTOR,
+    EVENT_FILTER_TYPE_EVENT_ID, EVENT_HEADER_FLAG_32_BIT_HEADER, EVENT_RECORD, EVENT_TRACE_CONTROL_STOP,
+    EVENT_TRACE_LOGFILEW, EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, EnableTraceEx2, OpenTraceW,
+    PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_REAL_TIME, PROCESSTRACE_HANDLE, ProcessTrace, StartTraceW,
+    TRACE_LEVEL_INFORMATION, WNODE_FLAG_TRACED_GUID,
 };
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use windows::Win32::System::Threading::{
@@ -32,6 +39,11 @@ use windows::core::{GUID, HSTRING, PWSTR};
 const SESSION_NAME: &str = "ArtVitals-FrameTiming";
 const DXGI_PROVIDER: GUID = GUID::from_u128(0xCA11C036_0102_4A2D_A6AD_F03CFED5D3C9);
 const D3D9_PROVIDER: GUID = GUID::from_u128(0x783ACA0A_790E_4D7F_8451_AA850511C6B9);
+const DXGKRNL_PROVIDER: GUID = GUID::from_u128(0x802EC45A_1E99_4B83_9920_87C98277BA9D);
+/// Microsoft_Windows_DxgKrnl: Base (0x1) | Present (0x8000000), bez bitu Performance (PresentMon
+/// tez go usuwa). Na Windows 10 zdarzenia nie maja bitu Present - wtedy dopasowuje je Base.
+const DXGKRNL_KEYWORDS: u64 = 0x0000_0000_0800_0001;
+const DXGKRNL_PRESENT_INFO: u16 = 0xB8;
 /// Microsoft_Windows_*_Analytic | Events - jak w PresentMon.
 const PRESENT_KEYWORDS: u64 = 0x8000_0000_0000_0002;
 const DXGI_PRESENT_START: u16 = 42;
@@ -55,9 +67,22 @@ const ACTIVE_TIMEOUT_S: f64 = 2.0;
 /// Klatki starsze niz tyle sekund sa usuwane (gorna granica okna statystyk).
 const MAX_KEEP_S: f64 = 600.0;
 
+/// Skad pochodzi zdarzenie Present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PresentSource {
+    /// DXGI / D3D9 - warstwa API (ma pierwszenstwo).
+    Api,
+    /// DxgKrnl - jadro grafiki (Vulkan, OpenGL i wszystko inne).
+    Kernel,
+}
+
 #[derive(Default)]
 struct ProcessFrames {
     last_present: Option<i64>,
+    /// Zrodlo, z ktorego liczone sa klatki tego procesu.
+    source: Option<PresentSource>,
+    /// Ostatnie zdarzenie z warstwy API - dopoki jest swieze, DxgKrnl jest pomijany.
+    last_api_present: Option<i64>,
     /// (znacznik QPC, czas klatki w ms)
     frames: VecDeque<(i64, f32)>,
 }
@@ -69,10 +94,22 @@ struct FrameLog {
 }
 
 impl FrameLog {
-    fn record_present(&mut self, pid: u32, timestamp: i64) {
+    fn record_present(&mut self, pid: u32, timestamp: i64, source: PresentSource) {
         let keep = (MAX_KEEP_S * self.qpc_frequency) as i64;
         let frequency = self.qpc_frequency;
+        let api_timeout = (ACTIVE_TIMEOUT_S * frequency) as i64;
         let process = self.processes.entry(pid).or_default();
+        if source == PresentSource::Api {
+            process.last_api_present = Some(timestamp);
+        } else if process.last_api_present.is_some_and(|t| timestamp - t < api_timeout) {
+            // Ta sama klatka przyszla juz z DXGI/D3D9.
+            return;
+        }
+        if process.source != Some(source) {
+            // Zmiana zrodla - odstep miedzy zdarzeniami z roznych warstw nie jest czasem klatki.
+            process.source = Some(source);
+            process.last_present = None;
+        }
         if let Some(last) = process.last_present.replace(timestamp) {
             let ms = ((timestamp - last) as f64 / frequency * 1000.0) as f32;
             if ms > 0.0 && ms < MAX_FRAME_MS {
@@ -156,7 +193,10 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
     let Some(record) = (unsafe { record.as_ref() }) else { return };
     let header = &record.EventHeader;
     let id = header.EventDescriptor.Id;
-    let is_present = if header.ProviderId == DXGI_PROVIDER {
+    let source = if header.ProviderId == DXGKRNL_PROVIDER { PresentSource::Kernel } else { PresentSource::Api };
+    let is_present = if header.ProviderId == DXGKRNL_PROVIDER {
+        id == DXGKRNL_PRESENT_INFO
+    } else if header.ProviderId == DXGI_PROVIDER {
         if id != DXGI_PRESENT_START && id != DXGI_PRESENT_MPO_START {
             return;
         }
@@ -181,8 +221,49 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
     }
     let log = unsafe { &*(record.UserContext as *const Mutex<FrameLog>) };
     if let Ok(mut log) = log.lock() {
-        log.record_present(header.ProcessId, header.TimeStamp);
+        log.record_present(header.ProcessId, header.TimeStamp, source);
     }
+}
+
+/// Filtr ID zdarzen (EVENT_FILTER_EVENT_ID) z jednym zdarzeniem - uklad jak w evntprov.h:
+/// FilterIn (BOOLEAN), Reserved (UCHAR), Count (USHORT), Events[Count] (USHORT).
+#[repr(C)]
+struct EventIdFilter {
+    filter_in: u8,
+    reserved: u8,
+    count: u16,
+    events: [u16; 1],
+}
+
+/// Wlacza DxgKrnl tylko dla zdarzenia Present_Info (filtr ID, Windows 8.1+).
+fn enable_dxgkrnl_presents(session: CONTROLTRACE_HANDLE) -> Result<(), u32> {
+    let filter = EventIdFilter { filter_in: 1, reserved: 0, count: 1, events: [DXGKRNL_PRESENT_INFO] };
+    let mut descriptor = EVENT_FILTER_DESCRIPTOR {
+        Ptr: &filter as *const EventIdFilter as u64,
+        Size: size_of::<EventIdFilter>() as u32,
+        Type: EVENT_FILTER_TYPE_EVENT_ID,
+    };
+    let parameters = ENABLE_TRACE_PARAMETERS {
+        Version: ENABLE_TRACE_PARAMETERS_VERSION_2,
+        // Pomija zdarzenia bez slow kluczowych (tak robi PresentMon).
+        EnableProperty: EVENT_ENABLE_PROPERTY_IGNORE_KEYWORD_0,
+        EnableFilterDesc: &mut descriptor,
+        FilterDescCount: 1,
+        ..Default::default()
+    };
+    let status = unsafe {
+        EnableTraceEx2(
+            session,
+            &DXGKRNL_PROVIDER,
+            EVENT_CONTROL_CODE_ENABLE_PROVIDER.0,
+            TRACE_LEVEL_INFORMATION as u8,
+            DXGKRNL_KEYWORDS,
+            0,
+            0,
+            Some(&parameters),
+        )
+    };
+    if status == ERROR_SUCCESS { Ok(()) } else { Err(status.0) }
 }
 
 impl FpsMonitor {
@@ -226,6 +307,10 @@ impl FpsMonitor {
                 stop_session();
                 return Err(format!("EnableTraceEx2: blad {}", status.0));
             }
+        }
+        // Vulkan/OpenGL - brak DxgKrnl nie blokuje pomiaru gier DirectX.
+        if let Err(status) = enable_dxgkrnl_presents(session) {
+            log::warn!("Pomiar FPS Vulkan/OpenGL (DxgKrnl) niedostepny: blad {status}");
         }
 
         let mut logger_name: Vec<u16> = SESSION_NAME.encode_utf16().chain(std::iter::once(0)).collect();
@@ -428,9 +513,27 @@ mod tests {
     #[test]
     fn long_gaps_are_not_frames() {
         let mut log = FrameLog { qpc_frequency: 1000.0, ..Default::default() };
-        log.record_present(7, 0);
-        log.record_present(7, 5000); // 5 s przerwy - gra w tle
-        log.record_present(7, 5016);
+        log.record_present(7, 0, PresentSource::Api);
+        log.record_present(7, 5000, PresentSource::Api); // 5 s przerwy - gra w tle
+        log.record_present(7, 5016, PresentSource::Api);
         assert_eq!(log.processes[&7].frames.len(), 1);
+    }
+
+    #[test]
+    fn kernel_presents_count_only_without_api_events() {
+        let mut log = FrameLog { qpc_frequency: 1000.0, ..Default::default() };
+        // Gra Vulkan: same zdarzenia DxgKrnl co 10 ms.
+        for t in (0..=100).step_by(10) {
+            log.record_present(1, t, PresentSource::Kernel);
+        }
+        assert_eq!(log.processes[&1].frames.len(), 10);
+        // Gra DirectX: kazda klatka z DXGI i z DxgKrnl - liczona raz.
+        for t in (0..=100).step_by(10) {
+            log.record_present(2, t, PresentSource::Api);
+            log.record_present(2, t + 1, PresentSource::Kernel);
+        }
+        let frames = &log.processes[&2].frames;
+        assert_eq!(frames.len(), 10);
+        assert!(frames.iter().all(|(_, ms)| (*ms - 10.0).abs() < 0.01));
     }
 }
