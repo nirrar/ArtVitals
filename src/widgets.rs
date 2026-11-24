@@ -13,6 +13,7 @@ use eframe::egui::{
 };
 
 use crate::config::{self, ExtraChart, SEPARATE_CHART_HEIGHT, WidgetConfig, WidgetFooter, WidgetIcon, WidgetKind};
+use crate::i18n::tr;
 use crate::metrics::Metric;
 use crate::sensors::SensorData;
 
@@ -369,7 +370,7 @@ fn paint_fans_card(
             pc.painter.text(
                 pos2(value.left() - 5.0 * scale, value.center().y),
                 Align2::RIGHT_CENTER,
-                "CIECZ",
+                tr("CIECZ", "LIQUID"),
                 FontId::proportional(9.0 * text),
                 alpha(TEXT_MUTED, op),
             );
@@ -381,7 +382,7 @@ fn paint_fans_card(
         pc.painter.text(
             pos2(area.left(), top + 4.0 * scale),
             Align2::LEFT_TOP,
-            "Brak wykrytych wentylatorów",
+            tr("Brak wykrytych wentylatorów", "No fans detected"),
             FontId::proportional(9.5 * text),
             alpha(TEXT_MUTED, op),
         );
@@ -818,7 +819,7 @@ fn paint_footer(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, values
             let Some((min, avg, max)) = pc.data.stats(widget.metric) else {
                 return;
             };
-            let parts = [("Min", min), ("Śr.", avg), ("Max", max)];
+            let parts = [("Min", min), (tr("Śr.", "Avg"), avg), ("Max", max)];
             let slot = rect.width() / parts.len() as f32;
             for (i, (label, value)) in parts.into_iter().enumerate() {
                 let x = rect.left() + slot * i as f32;

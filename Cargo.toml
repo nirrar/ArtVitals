@@ -16,7 +16,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.2.2"
 # Bez domyslnych funkcji - domyslne wlaczaja tylko backend linuksowy (libappindicator).
 tray-icon = { version = "0.26.1", default-features = false }
-windows = { version = "0.62.2", features = ["Win32_System_Performance", "Win32_System_LibraryLoader", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Diagnostics_Etw", "Win32_System_Time", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_System_Performance", "Win32_System_LibraryLoader", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_Threading", "Win32_System_SystemInformation", "Win32_System_Diagnostics_Etw", "Win32_System_Time", "Win32_UI_Shell", "Win32_Globalization"] }
 
 [profile.release]
 opt-level = 3

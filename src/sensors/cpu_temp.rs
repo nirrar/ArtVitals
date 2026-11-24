@@ -14,6 +14,7 @@
 use std::time::Instant;
 
 use super::cpu_amd::{AmdCpuInfo, AmdSensor};
+use crate::i18n::tr;
 use super::pawnio::PawnIo;
 
 // PawnIO.Modules 0.2.12, SHA-256 30a5a302283de1e080dfee99e686eca91d7e53e911095cb91a320fb961f1ce12
@@ -35,7 +36,7 @@ enum Backend {
 
 impl CpuTempSensor {
     pub fn new() -> Result<Self, String> {
-        let id = CpuIdentity::detect().ok_or("Brak instrukcji CPUID (nieobslugiwana architektura)")?;
+        let id = CpuIdentity::detect().ok_or(tr("Brak instrukcji CPUID (nieobslugiwana architektura)", "No CPUID instruction (unsupported architecture)"))?;
         log::info!("CPU: {} rodzina {:X}h model {:X}h, {}", id.vendor, id.family, id.model, id.brand);
         let backend = match id.vendor.as_str() {
             "GenuineIntel" => Backend::Intel(IntelSensor::new()?),
@@ -46,7 +47,7 @@ impl CpuTempSensor {
                 has_thermal_sensor: id.amd_thermal_sensor,
                 core_count: id.amd_core_count,
             })?),
-            other => return Err(format!("Nieobslugiwany producent procesora ({other})")),
+            other => return Err(format!("{} ({other})", tr("Nieobslugiwany producent procesora", "Unsupported CPU vendor"))),
         };
         Ok(Self { backend })
     }
@@ -94,7 +95,7 @@ impl IntelSensor {
     fn read_msr(&self, msr: u64) -> Result<u64, String> {
         self.pawnio
             .execute_one(c"ioctl_read_msr", &[msr])
-            .map_err(|err| format!("Odczyt MSR 0x{msr:X} nieudany: {err}"))
+            .map_err(|err| format!("{} 0x{msr:X} {}: {err}", tr("Odczyt MSR", "MSR"), tr("nieudany", "read failed")))
     }
 
     fn read(&mut self) -> Option<f32> {

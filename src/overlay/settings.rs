@@ -25,6 +25,7 @@ use crate::config::{
     self, Config, ExtraChart, MIN_WIDGET_SIZE, PanelTheme, WidgetConfig, WidgetFooter, WidgetIcon, WidgetKind, default_accent,
     default_icon,
 };
+use crate::i18n::{LanguageSetting, tr};
 use crate::metrics::Metric;
 use crate::widgets;
 
@@ -37,7 +38,10 @@ const SHEET_MIN_WIDTH: f32 = 460.0;
 const TOAST_DURATION: Duration = Duration::from_secs(5);
 const ZOOM_STEP: f32 = 1.25;
 /// Tytul okna konfiguracji - po nim `win32::capture_window` odnajduje okno do zrzutu.
-const SETTINGS_TITLE: &str = "ArtVitals — konfiguracja";
+/// Zalezy od jezyka; egui zmienia tytul okna po zmianie jezyka.
+fn settings_title() -> &'static str {
+    tr("ArtVitals — konfiguracja", "ArtVitals — settings")
+}
 /// Wysokosc wyskakujacego okna jako czesc wysokosci okna programu: co najmniej 70%,
 /// przy dluzszej tresci rosnie do 90%, dalej tresc sie przewija.
 const SHEET_MIN_HEIGHT_RATIO: f32 = 0.7;
@@ -159,7 +163,7 @@ impl SettingsState {
 impl OverlayApp {
     pub(super) fn show_settings_window(&mut self, ctx: &egui::Context) {
         let builder = ViewportBuilder::default()
-            .with_title(SETTINGS_TITLE)
+            .with_title(settings_title())
             .with_inner_size([1320.0, 820.0])
             .with_min_inner_size([980.0, 620.0]);
         ctx.show_viewport_immediate(viewport_id(), builder, |ui, _class| {
@@ -197,7 +201,7 @@ impl OverlayApp {
         // Okno: pierwsza klatka po otwarciu jest bez okna (zrzut do rozmycia), potem tlo + okno.
         if let Some(sheet) = self.settings.sheet {
             if !self.settings.blur.is_captured() {
-                self.settings.blur.capture(&ctx, SETTINGS_TITLE);
+                self.settings.blur.capture(&ctx, settings_title());
             } else {
                 self.settings.blur.paint(&ctx, pal.backdrop_tint);
                 self.sheet_ui(&ctx, &pal, sheet, &mut actions);
@@ -280,7 +284,7 @@ impl OverlayApp {
                 self.settings.recording_hotkey = None;
                 self.apply_hotkey(slot, text);
             }
-            None => self.status = Some(("Skrót musi zawierać Ctrl, Alt lub Shift".to_owned(), true)),
+            None => self.status = Some((tr("Skrót musi zawierać Ctrl, Alt lub Shift", "Shortcut must include Ctrl, Alt or Shift").to_owned(), true)),
         }
     }
 
@@ -293,7 +297,11 @@ impl OverlayApp {
                 ui_kit::large_title(ui, pal, "ArtVitals");
                 ui.label(RichText::new(format!("v{}", crate::VERSION)).size(12.0).color(pal.secondary));
             });
-            let state = if self.config.overlay_visible { "Overlay aktywny" } else { "Overlay ukryty" };
+            let state = if self.config.overlay_visible {
+                tr("Overlay aktywny", "Overlay active")
+            } else {
+                tr("Overlay ukryty", "Overlay hidden")
+            };
             ui.label(
                 RichText::new(format!("{state}  ·  {}", hotkey_parts(&self.config.overlay_hotkey).join("+")))
                     .size(13.0)
@@ -302,7 +310,7 @@ impl OverlayApp {
             ui.add_space(14.0);
 
             let mut open = None;
-            ui_kit::group(ui, pal, Some("Karty"), None, |ui| {
+            ui_kit::group(ui, pal, Some(tr("Karty", "Cards")), None, |ui| {
                 for widget in &self.config.widgets {
                     let icon = if widget.icon == WidgetIcon::None { default_icon(widget.metric) } else { widget.icon };
                     let detail = format!(
@@ -324,39 +332,39 @@ impl OverlayApp {
                     }
                     ui_kit::divider(ui, pal);
                 }
-                if ui_kit::action_row(ui, pal, "+  Dodaj kartę", pal.accent).clicked() {
+                if ui_kit::action_row(ui, pal, tr("+  Dodaj kartę", "+  Add card"), pal.accent).clicked() {
                     open = Some(Sheet::AddWidget);
                 }
             });
 
             let mut changed = false;
-            ui_kit::group(ui, pal, Some("Overlay"), Some("Przytrzymaj Alt podczas przeciągania, żeby wyłączyć przyciąganie."), |ui| {
-                changed |= ui_kit::row(ui, pal, "Widoczny w grze", |ui| ui_kit::toggle(ui, pal, &mut self.config.overlay_visible)).changed();
+            ui_kit::group(ui, pal, Some("Overlay"), Some(tr("Przytrzymaj Alt podczas przeciągania, żeby wyłączyć przyciąganie.", "Hold Alt while dragging to disable snapping.")), |ui| {
+                changed |= ui_kit::row(ui, pal, tr("Widoczny w grze", "Visible in game"), |ui| ui_kit::toggle(ui, pal, &mut self.config.overlay_visible)).changed();
                 ui_kit::divider(ui, pal);
-                changed |= ui_kit::row(ui, pal, "Przyciąganie do siatki", |ui| ui_kit::toggle(ui, pal, &mut self.config.snap_to_grid)).changed();
+                changed |= ui_kit::row(ui, pal, tr("Przyciąganie do siatki", "Snap to grid"), |ui| ui_kit::toggle(ui, pal, &mut self.config.snap_to_grid)).changed();
                 ui_kit::divider(ui, pal);
-                changed |= ui_kit::row(ui, pal, "Przyciąganie do krawędzi", |ui| ui_kit::toggle(ui, pal, &mut self.config.snap_to_edges)).changed();
+                changed |= ui_kit::row(ui, pal, tr("Przyciąganie do krawędzi", "Snap to edges"), |ui| ui_kit::toggle(ui, pal, &mut self.config.snap_to_edges)).changed();
             });
             if changed {
                 self.mark_dirty();
             }
 
             let issues = self.sensors.lock().issues.len();
-            ui_kit::group(ui, pal, Some("Ustawienia"), None, |ui| {
-                if ui_kit::nav_row(ui, pal, Leading::Gear(Color32::from_rgb(142, 142, 150)), "Ogólne", "", false).clicked() {
+            ui_kit::group(ui, pal, Some(tr("Ustawienia", "Settings")), None, |ui| {
+                if ui_kit::nav_row(ui, pal, Leading::Gear(Color32::from_rgb(142, 142, 150)), tr("Ogólne", "General"), "", false).clicked() {
                     open = Some(Sheet::General);
                 }
                 ui_kit::divider(ui, pal);
                 let detail = match issues {
-                    0 => "Wszystko działa".to_owned(),
+                    0 => tr("Wszystko działa", "All good").to_owned(),
                     1 => "1 problem".to_owned(),
-                    n => format!("{n} problemy"),
+                    n => format!("{n} {}", tr("problemy", "problems")),
                 };
                 if ui_kit::nav_row(
                     ui,
                     pal,
                     Leading::Icon(Color32::from_rgb(255, 149, 0), WidgetIcon::Thermometer),
-                    "Czujniki",
+                    tr("Czujniki", "Sensors"),
                     &detail,
                     false,
                 )
@@ -367,13 +375,13 @@ impl OverlayApp {
             });
 
             ui_kit::group(ui, pal, None, None, |ui| {
-                if ui_kit::action_row(ui, pal, "Folder konfiguracji", pal.accent).clicked()
+                if ui_kit::action_row(ui, pal, tr("Folder konfiguracji", "Config folder"), pal.accent).clicked()
                     && let Err(err) = std::process::Command::new("explorer").arg(config::config_dir()).spawn()
                 {
-                    self.status = Some((format!("Nie można otworzyć folderu: {err}"), true));
+                    self.status = Some((format!("{} {err}", tr("Nie można otworzyć folderu:", "Can't open the folder:")), true));
                 }
                 ui_kit::divider(ui, pal);
-                if ui_kit::action_row(ui, pal, "Zamknij program", pal.destructive).clicked() {
+                if ui_kit::action_row(ui, pal, tr("Zamknij program", "Quit"), pal.destructive).clicked() {
                     let ctx = ui.ctx().clone();
                     self.quit(&ctx);
                 }
@@ -391,10 +399,10 @@ impl OverlayApp {
         let screen = self.screen;
         let mut zoom_command = None;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Podgląd ekranu").size(20.0).strong().color(pal.label));
+            ui.label(RichText::new(tr("Podgląd ekranu", "Screen preview")).size(20.0).strong().color(pal.label));
             ui.add_space(12.0);
             let percent = format!("{:.0}%", self.preview_zoom() * 100.0);
-            zoom_command = ui_kit::pill_buttons(ui, pal, &["−", &percent, "+", "Dopasuj"]);
+            zoom_command = ui_kit::pill_buttons(ui, pal, &["−", &percent, "+", tr("Dopasuj", "Fit")]);
         });
         ui.add_space(10.0);
 
@@ -463,7 +471,10 @@ impl OverlayApp {
         ui.add_space(6.0);
         ui.label(
             RichText::new(
-                "Przeciągnij kartę · róg = rozmiar · dwuklik karty = ustawienia · kółko = powiększenie · przeciągnij tło = przesuń widok",
+                tr(
+                    "Przeciągnij kartę · róg = rozmiar · dwuklik karty = ustawienia · kółko = powiększenie · przeciągnij tło = przesuń widok",
+                    "Drag a card · corner = resize · double-click a card = settings · wheel = zoom · drag background = pan",
+                ),
             )
             .size(12.0)
             .color(pal.secondary),
@@ -647,17 +658,17 @@ impl OverlayApp {
                         .find(|w| w.id == id)
                         .map(|w| w.display_title().to_owned())
                         .unwrap_or_default(),
-                    Sheet::AddWidget => "Nowa karta".to_owned(),
-                    Sheet::General => "Ogólne".to_owned(),
-                    Sheet::Sensors => "Czujniki".to_owned(),
+                    Sheet::AddWidget => tr("Nowa karta", "New card").to_owned(),
+                    Sheet::General => tr("Ogólne", "General").to_owned(),
+                    Sheet::Sensors => tr("Czujniki", "Sensors").to_owned(),
                 };
                 // Nowa karta: "Anuluj" / "Dodaj"; edycja karty: "Anuluj" (cofa) / "Gotowe" (zatwierdza);
                 // ustawienia ogolne tez (zmiany widac na zywo, "Anuluj" przywraca stan z otwarcia);
                 // czujniki sa tylko do odczytu, wiec maja samo "Gotowe".
                 let (cancel, confirm) = match sheet {
-                    Sheet::AddWidget => (Some("Anuluj"), "Dodaj"),
-                    Sheet::Widget(_) | Sheet::General => (Some("Anuluj"), "Gotowe"),
-                    Sheet::Sensors => (None, "Gotowe"),
+                    Sheet::AddWidget => (Some(tr("Anuluj", "Cancel")), tr("Dodaj", "Add")),
+                    Sheet::Widget(_) | Sheet::General => (Some(tr("Anuluj", "Cancel")), tr("Gotowe", "Done")),
+                    Sheet::Sensors => (None, tr("Gotowe", "Done")),
                 };
                 let pressed = ui_kit::sheet_header(ui, pal, &title, cancel, confirm);
                 // min_scrolled_height gwarantuje minimum, gdy tresc jest dluzsza niz miejsce w oknie;
@@ -724,7 +735,7 @@ impl OverlayApp {
 
     fn widget_sheet(&mut self, ui: &mut egui::Ui, pal: &Palette, id: u64, actions: &mut Vec<WidgetAction>) {
         let Some(index) = self.config.widgets.iter().position(|w| w.id == id) else {
-            ui.label("Ta karta już nie istnieje.");
+            ui.label(tr("Ta karta już nie istnieje.", "This card no longer exists."));
             return;
         };
         if self.settings.edit_snapshot.as_ref().is_none_or(|s| s.id != id) {
@@ -746,16 +757,31 @@ impl OverlayApp {
             ui_kit::group(
                 ui,
                 pal,
-                Some("Metryki"),
+                Some(tr("Metryki", "Metrics")),
                 Some(match w.kind {
-                    WidgetKind::Graph => "Główna metryka jest największa i ma progi kolorów. Każdą dodatkową możesz pokazać na wykresie głównym (linia we własnej skali), na osobnym wykresie albo jako samą wartość.",
-                    WidgetKind::Bar => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako mniejsze paski pod głównym.",
-                    WidgetKind::Gauge => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wewnętrzne pierścienie wskaźnika.",
-                    WidgetKind::Number => "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wartości z prawej.",
-                    WidgetKind::Fans => "Karta pokazuje obroty wszystkich wykrytych wentylatorów, pompy i temperaturę cieczy AIO. Poniżej wybierzesz, które pokazać.",
+                    WidgetKind::Graph => tr(
+                        "Główna metryka jest największa i ma progi kolorów. Każdą dodatkową możesz pokazać na wykresie głównym (linia we własnej skali), na osobnym wykresie albo jako samą wartość.",
+                        "The main metric is the largest and has color thresholds. Each extra one can be shown on the main graph (a line in its own scale), on a separate graph, or as a value only.",
+                    ),
+                    WidgetKind::Bar => tr(
+                        "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako mniejsze paski pod głównym.",
+                        "The main metric is the largest and has color thresholds. Extra metrics are shown as smaller bars below the main one.",
+                    ),
+                    WidgetKind::Gauge => tr(
+                        "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wewnętrzne pierścienie wskaźnika.",
+                        "The main metric is the largest and has color thresholds. Extra metrics are shown as inner rings of the gauge.",
+                    ),
+                    WidgetKind::Number => tr(
+                        "Główna metryka jest największa i ma progi kolorów. Dodatkowe pokazują się jako wartości z prawej.",
+                        "The main metric is the largest and has color thresholds. Extra metrics are shown as values on the right.",
+                    ),
+                    WidgetKind::Fans => tr(
+                        "Karta pokazuje obroty wszystkich wykrytych wentylatorów, pompy i temperaturę cieczy AIO. Poniżej wybierzesz, które pokazać.",
+                        "The card shows the speed of all detected fans and pumps, and the AIO liquid temperature. Choose which ones to show below.",
+                    ),
                 }),
                 |ui| {
-                    ui_kit::row(ui, pal, "Główna", |ui| {
+                    ui_kit::row(ui, pal, tr("Główna", "Main"), |ui| {
                         egui::ComboBox::from_id_salt("metric").selected_text(w.metric.label()).show_ui(ui, |ui| {
                             for m in Metric::ALL {
                                 if ui.selectable_label(m == w.metric, m.label()).clicked() && m != w.metric {
@@ -770,7 +796,7 @@ impl OverlayApp {
                     for (i, extra) in w.extra.iter().enumerate() {
                         ui_kit::divider(ui, pal);
                         ui_kit::row(ui, pal, extra.metric.label(), |ui| {
-                            let button = egui::Button::new(RichText::new("Usuń").color(pal.destructive))
+                            let button = egui::Button::new(RichText::new(tr("Usuń", "Remove")).color(pal.destructive))
                                 .fill(Color32::TRANSPARENT);
                             if ui.add(button).clicked() {
                                 remove = Some(i);
@@ -805,7 +831,7 @@ impl OverlayApp {
                     if !available.is_empty() {
                         ui_kit::divider(ui, pal);
                         padded(ui, |ui| {
-                            ui.menu_button(RichText::new("+  Dodaj metrykę").color(pal.accent), |ui| {
+                            ui.menu_button(RichText::new(tr("+  Dodaj metrykę", "+  Add metric")).color(pal.accent), |ui| {
                                 for metric in available {
                                     if is_graph {
                                         // Na wykresie od razu pytamy, jak pokazac metryke.
@@ -837,12 +863,15 @@ impl OverlayApp {
                 ui_kit::group(
                     ui,
                     pal,
-                    Some("Wentylatory"),
-                    Some("Wentylatory płyty wymagają PawnIO i uruchomienia jako administrator. AIO są czytane przez USB - program producenta (NZXT CAM, iCUE) może je blokować."),
+                    Some(tr("Wentylatory", "Fans")),
+                    Some(tr(
+                        "Wentylatory płyty wymagają PawnIO i uruchomienia jako administrator. AIO są czytane przez USB - program producenta (NZXT CAM, iCUE) może je blokować.",
+                        "Motherboard fans require PawnIO and running as administrator. AIOs are read over USB - the vendor app (NZXT CAM, iCUE) may block them.",
+                    )),
                     |ui| {
                         if rows.is_empty() {
                             padded(ui, |ui| {
-                                ui.label(RichText::new("Nie wykryto wentylatorów.").color(pal.secondary));
+                                ui.label(RichText::new(tr("Nie wykryto wentylatorów.", "No fans detected.")).color(pal.secondary));
                             });
                         }
                         for (i, row) in rows.iter().enumerate() {
@@ -865,7 +894,7 @@ impl OverlayApp {
 
             let kinds = WidgetKind::for_metric(w.metric);
             if kinds.len() > 1 {
-                ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
+                ui_kit::group(ui, pal, Some(tr("Typ karty", "Card type")), None, |ui| {
                     padded(ui, |ui| {
                         let options: Vec<(WidgetKind, &str)> = kinds.iter().map(|k| (*k, k.label())).collect();
                         ui_kit::segmented(ui, pal, &mut new_kind, &options);
@@ -873,8 +902,8 @@ impl OverlayApp {
                 });
             }
 
-            ui_kit::group(ui, pal, Some("Wygląd"), None, |ui| {
-                ui_kit::row(ui, pal, "Ikona", |ui| {
+            ui_kit::group(ui, pal, Some(tr("Wygląd", "Appearance")), None, |ui| {
+                ui_kit::row(ui, pal, tr("Ikona", "Icon"), |ui| {
                     egui::ComboBox::from_id_salt("icon").selected_text(w.icon.label()).show_ui(ui, |ui| {
                         for icon in WidgetIcon::ALL {
                             changed |= ui.selectable_value(&mut w.icon, icon, icon.label()).changed();
@@ -883,7 +912,7 @@ impl OverlayApp {
                 });
                 if w.kind != WidgetKind::Fans {
                     ui_kit::divider(ui, pal);
-                    ui_kit::row(ui, pal, "Stopka", |ui| {
+                    ui_kit::row(ui, pal, tr("Stopka", "Footer"), |ui| {
                         egui::ComboBox::from_id_salt("footer").selected_text(w.footer.label()).show_ui(ui, |ui| {
                             for footer in WidgetFooter::ALL.into_iter().filter(|f| f.fits(w.metric)) {
                                 changed |= ui.selectable_value(&mut w.footer, footer, footer.label()).changed();
@@ -892,10 +921,10 @@ impl OverlayApp {
                     });
                 }
                 ui_kit::divider(ui, pal);
-                changed |= ui_kit::row(ui, pal, "Pokaż tytuł", |ui| ui_kit::toggle(ui, pal, &mut w.show_title)).changed();
+                changed |= ui_kit::row(ui, pal, tr("Pokaż tytuł", "Show title"), |ui| ui_kit::toggle(ui, pal, &mut w.show_title)).changed();
                 if w.show_title {
                     ui_kit::divider(ui, pal);
-                    ui_kit::row(ui, pal, "Tytuł", |ui| {
+                    ui_kit::row(ui, pal, tr("Tytuł", "Title"), |ui| {
                         changed |= ui
                             .add(
                                 egui::TextEdit::singleline(&mut w.title)
@@ -907,15 +936,15 @@ impl OverlayApp {
                     });
                 }
                 ui_kit::divider(ui, pal);
-                ui_kit::row(ui, pal, "Kolor akcentu", |ui| {
-                    if ui.small_button("Domyślny").clicked() {
+                ui_kit::row(ui, pal, tr("Kolor akcentu", "Accent color"), |ui| {
+                    if ui.small_button(tr("Domyślny", "Default")).clicked() {
                         w.accent = default_accent(w.metric);
                         changed = true;
                     }
                 });
                 changed |= ui_kit::color_swatches(ui, pal, &mut w.accent);
                 ui_kit::divider(ui, pal);
-                ui_kit::row(ui, pal, "Tło karty", |ui| {
+                ui_kit::row(ui, pal, tr("Tło karty", "Card background"), |ui| {
                     changed |= ui
                         .add(egui::Slider::new(&mut w.background_opacity, 0.0..=1.0).show_value(false))
                         .changed();
@@ -925,17 +954,26 @@ impl OverlayApp {
             let unit = w.metric.unit();
             let (min, max) = w.metric.range();
             // Progi dotycza tylko metryki glownej - nazwa metryki w naglowku, zeby bylo jasne czego.
-            let thresholds_header = format!("Progi kolorów: {}", w.metric.label());
+            let thresholds_header = format!("{} {}", tr("Progi kolorów:", "Color thresholds:"), w.metric.label());
             if w.metric.has_thresholds() {
                 let thresholds_footer = format!(
-                    "Gdy {} {} progu ostrzeżenia, liczba na karcie robi się żółta, a po progu krytycznym czerwona. Dodatkowe metryki mają stałe progi.",
+                    "{} {} {} {}",
+                    tr("Gdy", "When"),
                     lowercase_first(w.metric.label()),
-                    if w.metric.higher_is_worse() { "przekroczy wartość" } else { "spadnie poniżej" }
+                    if w.metric.higher_is_worse() {
+                        tr("przekroczy wartość", "exceeds")
+                    } else {
+                        tr("spadnie poniżej", "drops below")
+                    },
+                    tr(
+                        "progu ostrzeżenia, liczba na karcie robi się żółta, a po progu krytycznym czerwona. Dodatkowe metryki mają stałe progi.",
+                        "the warning threshold, the number on the card turns yellow, and past the critical threshold red. Extra metrics have fixed thresholds.",
+                    ),
                 );
                 let (warn_label, crit_label) = if w.metric.higher_is_worse() {
-                    ("Ostrzeżenie (żółty) od", "Krytyczny (czerwony) od")
+                    (tr("Ostrzeżenie (żółty) od", "Warning (yellow) from"), tr("Krytyczny (czerwony) od", "Critical (red) from"))
                 } else {
-                    ("Ostrzeżenie (żółty) poniżej", "Krytyczny (czerwony) poniżej")
+                    (tr("Ostrzeżenie (żółty) poniżej", "Warning (yellow) below"), tr("Krytyczny (czerwony) poniżej", "Critical (red) below"))
                 };
                 ui_kit::group(ui, pal, Some(&thresholds_header), Some(&thresholds_footer), |ui| {
                     ui_kit::row(ui, pal, warn_label, |ui| {
@@ -955,7 +993,10 @@ impl OverlayApp {
                 ui_kit::group(ui, pal, Some(&thresholds_header), None, |ui| {
                     padded(ui, |ui| {
                         ui.label(
-                            RichText::new("Zegary nie zmieniają koloru - wysoki zegar to normalna praca, nie ostrzeżenie.")
+                            RichText::new(tr(
+                                "Zegary nie zmieniają koloru - wysoki zegar to normalna praca, nie ostrzeżenie.",
+                                "Clocks don't change color - a high clock is normal operation, not a warning.",
+                            ))
                                 .color(pal.secondary),
                         );
                     });
@@ -971,20 +1012,20 @@ impl OverlayApp {
             ui_kit::group(
                 ui,
                 pal,
-                Some("Położenie"),
-                Some("Przypiętej karty nie da się przesunąć ani zmienić jej rozmiaru."),
+                Some(tr("Położenie", "Placement")),
+                Some(tr("Przypiętej karty nie da się przesunąć ani zmienić jej rozmiaru.", "A pinned card can't be moved or resized.")),
                 |ui| {
-                    changed |= ui_kit::row(ui, pal, "Przypięta", |ui| ui_kit::toggle(ui, pal, &mut w.pinned)).changed();
+                    changed |= ui_kit::row(ui, pal, tr("Przypięta", "Pinned"), |ui| ui_kit::toggle(ui, pal, &mut w.pinned)).changed();
                     ui_kit::divider(ui, pal);
                     let enabled = !w.pinned;
-                    ui_kit::row(ui, pal, "Pozycja", |ui| {
+                    ui_kit::row(ui, pal, tr("Pozycja", "Position"), |ui| {
                         ui.add_enabled_ui(enabled, |ui| {
                             changed |= ui.add(egui::DragValue::new(&mut w.pos[1]).prefix("Y ")).changed();
                             changed |= ui.add(egui::DragValue::new(&mut w.pos[0]).prefix("X ")).changed();
                         });
                     });
                     ui_kit::divider(ui, pal);
-                    ui_kit::row(ui, pal, "Rozmiar", |ui| {
+                    ui_kit::row(ui, pal, tr("Rozmiar", "Size"), |ui| {
                         ui.add_enabled_ui(enabled, |ui| {
                             changed |= ui
                                 .add(egui::DragValue::new(&mut w.size[1]).prefix("H ").range(MIN_WIDGET_SIZE[1]..=2000.0))
@@ -1003,15 +1044,15 @@ impl OverlayApp {
         }
 
         ui_kit::group(ui, pal, None, None, |ui| {
-            if ui_kit::action_row(ui, pal, "Duplikuj kartę", pal.accent).clicked() {
+            if ui_kit::action_row(ui, pal, tr("Duplikuj kartę", "Duplicate card"), pal.accent).clicked() {
                 actions.push(WidgetAction::Duplicate(id));
             }
             ui_kit::divider(ui, pal);
-            if ui_kit::action_row(ui, pal, "Przenieś na wierzch", pal.accent).clicked() {
+            if ui_kit::action_row(ui, pal, tr("Przenieś na wierzch", "Bring to front"), pal.accent).clicked() {
                 actions.push(WidgetAction::BringToFront(id));
             }
             ui_kit::divider(ui, pal);
-            if ui_kit::action_row(ui, pal, "Usuń kartę", pal.destructive).clicked() {
+            if ui_kit::action_row(ui, pal, tr("Usuń kartę", "Delete card"), pal.destructive).clicked() {
                 actions.push(WidgetAction::Delete(id));
             }
         });
@@ -1038,14 +1079,14 @@ impl OverlayApp {
             self.settings.add_kind = kinds[0];
         }
         if kinds.len() > 1 {
-            ui_kit::group(ui, pal, Some("Typ karty"), None, |ui| {
+            ui_kit::group(ui, pal, Some(tr("Typ karty", "Card type")), None, |ui| {
                 padded(ui, |ui| {
                     let options: Vec<(WidgetKind, &str)> = kinds.iter().map(|k| (*k, k.label())).collect();
                     ui_kit::segmented(ui, pal, &mut self.settings.add_kind, &options);
                 });
             });
         }
-        ui_kit::group(ui, pal, Some("Co pokazać"), None, |ui| {
+        ui_kit::group(ui, pal, Some(tr("Co pokazać", "What to show")), None, |ui| {
             for (i, metric) in Metric::ALL.into_iter().enumerate() {
                 if i > 0 {
                     ui_kit::divider(ui, pal);
@@ -1079,13 +1120,13 @@ impl OverlayApp {
         self.hotkey_group(ui, pal, HotkeySlot::Settings);
 
         ui_kit::group(ui, pal, Some("Overlay"), None, |ui| {
-            ui_kit::row(ui, pal, "Krycie", |ui| {
+            ui_kit::row(ui, pal, tr("Krycie", "Opacity"), |ui| {
                 changed |= ui
                     .add(egui::Slider::new(&mut self.config.overlay_opacity, 0.1..=1.0).show_value(false))
                     .changed();
             });
             ui_kit::divider(ui, pal);
-            ui_kit::row(ui, pal, "Powiększenie tekstu", |ui| {
+            ui_kit::row(ui, pal, tr("Powiększenie tekstu", "Text size boost"), |ui| {
                 // Karty rosna razem z tekstem (o miejsce zajete przez napisy), wykresy zostaja.
                 let mut boost = self.config.font_boost;
                 if ui
@@ -1097,17 +1138,17 @@ impl OverlayApp {
                 }
             });
             ui_kit::divider(ui, pal);
-            changed |= ui_kit::row(ui, pal, "Płynne animacje", |ui| ui_kit::toggle(ui, pal, &mut self.config.animations)).changed();
+            changed |= ui_kit::row(ui, pal, tr("Płynne animacje", "Smooth animations"), |ui| ui_kit::toggle(ui, pal, &mut self.config.animations)).changed();
         });
 
-        ui_kit::group(ui, pal, Some("Dane"), None, |ui| {
-            ui_kit::row(ui, pal, "Odświeżanie", |ui| {
+        ui_kit::group(ui, pal, Some(tr("Dane", "Data")), None, |ui| {
+            ui_kit::row(ui, pal, tr("Odświeżanie", "Refresh interval"), |ui| {
                 timing |= ui
                     .add(egui::Slider::new(&mut self.config.sample_interval_ms, 250..=5000).suffix(" ms").step_by(50.0))
                     .changed();
             });
             ui_kit::divider(ui, pal);
-            ui_kit::row(ui, pal, "Historia wykresu", |ui| {
+            ui_kit::row(ui, pal, tr("Historia wykresu", "Graph history"), |ui| {
                 timing |= ui.add(egui::Slider::new(&mut self.config.history_seconds, 10..=600).suffix(" s")).changed();
             });
         });
@@ -1115,10 +1156,13 @@ impl OverlayApp {
         ui_kit::group(
             ui,
             pal,
-            Some("Pomiar FPS"),
-            Some("Średni FPS oraz 1% i 0.1% low są liczone z ostatnich N sekund gry. Krótsze okno szybciej reaguje na zacięcia i ich koniec, dłuższe daje stabilniejszy wynik (jak w benchmarkach)."),
+            Some(tr("Pomiar FPS", "FPS measurement")),
+            Some(tr(
+                "Średni FPS oraz 1% i 0.1% low są liczone z ostatnich N sekund gry. Krótsze okno szybciej reaguje na zacięcia i ich koniec, dłuższe daje stabilniejszy wynik (jak w benchmarkach).",
+                "Average FPS and 1% / 0.1% lows are calculated from the last N seconds of gameplay. A shorter window reacts faster to stutters and their end, a longer one gives a steadier result (like in benchmarks).",
+            )),
             |ui| {
-                ui_kit::row(ui, pal, "Okno średniej i lows", |ui| {
+                ui_kit::row(ui, pal, tr("Okno średniej i lows", "Average & lows window"), |ui| {
                     timing |= ui
                         .add(egui::Slider::new(&mut self.config.fps_stats_seconds, 2..=120).suffix(" s"))
                         .changed();
@@ -1126,14 +1170,14 @@ impl OverlayApp {
             },
         );
 
-        ui_kit::group(ui, pal, Some("Układanie kart"), None, |ui| {
-            ui_kit::row(ui, pal, "Rozmiar siatki", |ui| {
+        ui_kit::group(ui, pal, Some(tr("Układanie kart", "Card layout")), None, |ui| {
+            ui_kit::row(ui, pal, tr("Rozmiar siatki", "Grid size"), |ui| {
                 changed |= ui
                     .add(egui::Slider::new(&mut self.config.grid_size, 2.0..=64.0).suffix(" pt").step_by(1.0))
                     .changed();
             });
             ui_kit::divider(ui, pal);
-            ui_kit::row(ui, pal, "Zasięg przyciągania", |ui| {
+            ui_kit::row(ui, pal, tr("Zasięg przyciągania", "Snap distance"), |ui| {
                 changed |= ui
                     .add(egui::Slider::new(&mut self.config.snap_distance, 0.0..=64.0).suffix(" pt").step_by(1.0))
                     .changed();
@@ -1141,16 +1185,35 @@ impl OverlayApp {
         });
 
         let mut theme = self.config.panel_theme;
-        ui_kit::group(ui, pal, Some("Okno konfiguracji"), None, |ui| {
-            changed |= ui_kit::row(ui, pal, "Otwieraj przy starcie", |ui| {
+        ui_kit::group(ui, pal, Some(tr("Okno konfiguracji", "Settings window")), None, |ui| {
+            changed |= ui_kit::row(ui, pal, tr("Otwieraj przy starcie", "Open on startup"), |ui| {
                 ui_kit::toggle(ui, pal, &mut self.config.show_settings_on_start)
             })
             .changed();
             ui_kit::divider(ui, pal);
             padded(ui, |ui| {
-                ui_kit::segmented(ui, pal, &mut theme, &[(PanelTheme::Dark, "Ciemny"), (PanelTheme::Light, "Jasny")]);
+                ui_kit::segmented(
+                    ui,
+                    pal,
+                    &mut theme,
+                    &[(PanelTheme::Dark, tr("Ciemny", "Dark")), (PanelTheme::Light, tr("Jasny", "Light"))],
+                );
             });
         });
+
+        // Jezyk: naglowek w obu jezykach, zeby dalo sie go znalezc po pomylkowej zmianie.
+        let mut language = self.config.language;
+        ui_kit::group(ui, pal, Some("Język / Language"), None, |ui| {
+            padded(ui, |ui| {
+                let options: Vec<(LanguageSetting, &str)> = LanguageSetting::ALL.iter().map(|l| (*l, l.label())).collect();
+                ui_kit::segmented(ui, pal, &mut language, &options);
+            });
+        });
+        if language != self.config.language {
+            self.config.language = language;
+            self.config.apply_language();
+            changed = true;
+        }
 
         if theme != self.config.panel_theme {
             self.set_panel_theme(&ctx, theme);
@@ -1166,8 +1229,14 @@ impl OverlayApp {
     /// Sekcja jednego skrotu: aktualne klocki, nagrywanie i ukladanie z klockow.
     fn hotkey_group(&mut self, ui: &mut egui::Ui, pal: &Palette, slot: HotkeySlot) {
         let (title, footer) = match slot {
-            HotkeySlot::Overlay => ("Pokaż / ukryj overlay w grze", "Działa także w grze. Musi zawierać Ctrl, Alt lub Shift."),
-            HotkeySlot::Settings => ("Okno konfiguracji", "Otwiera i zamyka to okno. Musi zawierać Ctrl, Alt lub Shift."),
+            HotkeySlot::Overlay => (
+                tr("Pokaż / ukryj overlay w grze", "Show / hide overlay in game"),
+                tr("Działa także w grze. Musi zawierać Ctrl, Alt lub Shift.", "Works in game too. Must include Ctrl, Alt or Shift."),
+            ),
+            HotkeySlot::Settings => (
+                tr("Okno konfiguracji", "Settings window"),
+                tr("Otwiera i zamyka to okno. Musi zawierać Ctrl, Alt lub Shift.", "Opens and closes this window. Must include Ctrl, Alt or Shift."),
+            ),
         };
         let current = self.hotkey_text(slot).to_owned();
         let index = slot_index(slot);
@@ -1178,16 +1247,16 @@ impl OverlayApp {
         let mut apply = None;
 
         ui_kit::group(ui, pal, Some(title), Some(footer), |ui| {
-            ui_kit::row(ui, pal, "Aktualny skrót", |ui| {
+            ui_kit::row(ui, pal, tr("Aktualny skrót", "Current shortcut"), |ui| {
                 keycaps(ui, pal, &hotkey_parts(&current));
             });
             ui_kit::divider(ui, pal);
-            ui_kit::row(ui, pal, "Nagraj z klawiatury", |ui| {
+            ui_kit::row(ui, pal, tr("Nagraj z klawiatury", "Record from keyboard"), |ui| {
                 let recording = self.settings.recording_hotkey == Some(slot);
                 let text = if recording {
-                    RichText::new("Naciśnij skrót…  (Esc = anuluj)").color(pal.accent)
+                    RichText::new(tr("Naciśnij skrót…  (Esc = anuluj)", "Press a shortcut…  (Esc = cancel)")).color(pal.accent)
                 } else {
-                    RichText::new("Nagraj").color(pal.accent)
+                    RichText::new(tr("Nagraj", "Record")).color(pal.accent)
                 };
                 if ui.button(text).clicked() {
                     self.settings.recording_hotkey = if recording { None } else { Some(slot) };
@@ -1195,7 +1264,7 @@ impl OverlayApp {
             });
             ui_kit::divider(ui, pal);
             padded(ui, |ui| {
-                ui.label(RichText::new("Ułóż z klocków").color(pal.label));
+                ui.label(RichText::new(tr("Ułóż z klocków", "Build from keys")).color(pal.label));
                 ui.add_space(6.0);
                 let Some((modifiers, key)) = &mut self.settings.hotkey_drafts[index] else { return };
                 ui.horizontal_wrapped(|ui| {
@@ -1204,7 +1273,7 @@ impl OverlayApp {
                     keycap_toggle(ui, pal, "Alt", &mut modifiers.alt);
                     keycap_toggle(ui, pal, "Shift", &mut modifiers.shift);
                     ui.label(RichText::new("+").size(16.0).color(pal.secondary));
-                    let selected = key.map(|k| k.symbol_or_name().to_owned()).unwrap_or_else(|| "Klawisz".to_owned());
+                    let selected = key.map(|k| k.symbol_or_name().to_owned()).unwrap_or_else(|| tr("Klawisz", "Key").to_owned());
                     egui::ComboBox::from_id_salt(("hotkey_key", index))
                         .selected_text(selected)
                         .height(320.0)
@@ -1220,12 +1289,12 @@ impl OverlayApp {
                     match &built {
                         Some(text) => keycaps(ui, pal, &hotkey_parts(text)),
                         None => {
-                            ui.label(RichText::new("Wybierz co najmniej jeden z Ctrl/Alt/Shift i klawisz").color(pal.secondary));
+                            ui.label(RichText::new(tr("Wybierz co najmniej jeden z Ctrl/Alt/Shift i klawisz", "Pick at least one of Ctrl/Alt/Shift and a key")).color(pal.secondary));
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let can_apply = built.as_ref().is_some_and(|text| *text != current);
-                        if ui.add_enabled(can_apply, egui::Button::new("Ustaw skrót")).clicked() {
+                        if ui.add_enabled(can_apply, egui::Button::new(tr("Ustaw skrót", "Set shortcut"))).clicked() {
                             apply = built.clone();
                         }
                     });
@@ -1248,7 +1317,7 @@ impl OverlayApp {
     fn apply_hotkey(&mut self, slot: HotkeySlot, text: String) {
         match self.hotkeys.set(slot, &text) {
             Ok(()) => {
-                self.status = Some((format!("Nowy skrót: {}", hotkey_parts(&text).join(" + ")), false));
+                self.status = Some((format!("{} {}", tr("Nowy skrót:", "New shortcut:"), hotkey_parts(&text).join(" + ")), false));
                 self.settings.hotkey_drafts[slot_index(slot)] = Some(split_hotkey(&text));
                 match slot {
                     HotkeySlot::Overlay => self.config.overlay_hotkey = text,
@@ -1264,16 +1333,18 @@ impl OverlayApp {
         let data = self.sensors.lock();
         let footer = format!(
             "{}{}",
-            data.gpu_name.as_deref().unwrap_or("Brak karty NVIDIA"),
+            data.gpu_name.as_deref().unwrap_or(tr("Brak karty NVIDIA", "No NVIDIA card")),
             match &data.fps_process {
                 Some(process) => format!(
-                    "  ·  FPS mierzone dla: {process} (średnia i lows z ostatnich {} s)",
+                    "  ·  {} {process} ({} {} s)",
+                    tr("FPS mierzone dla:", "FPS measured for:"),
+                    tr("średnia i lows z ostatnich", "average and lows from the last"),
                     self.config.fps_stats_seconds
                 ),
-                None => "  ·  FPS: brak aktywnej gry (DirectX 9-12)".to_owned(),
+                None => format!("  ·  {}", tr("FPS: brak aktywnej gry (DirectX 9-12)", "FPS: no active game (DirectX 9-12)")),
             }
         );
-        ui_kit::group(ui, pal, Some("Odczyty na żywo"), Some(&footer), |ui| {
+        ui_kit::group(ui, pal, Some(tr("Odczyty na żywo", "Live readings")), Some(&footer), |ui| {
             for (i, metric) in Metric::ALL.into_iter().enumerate() {
                 if i > 0 {
                     ui_kit::divider(ui, pal);
@@ -1288,8 +1359,8 @@ impl OverlayApp {
             ui_kit::group(
                 ui,
                 pal,
-                Some("Problemy"),
-                Some("Temperatura CPU wymaga uruchomienia programu jako administrator."),
+                Some(tr("Problemy", "Issues")),
+                Some(tr("Temperatura CPU wymaga uruchomienia programu jako administrator.", "CPU temperature requires running the program as administrator.")),
                 |ui| {
                     for (i, (source, issue)) in data.issues.iter().enumerate() {
                         if i > 0 {
@@ -1315,12 +1386,13 @@ impl OverlayApp {
     }
 }
 
-/// "Obciazenie CPU" -> "obciazenie CPU" (skroty jak CPU/GPU/VRAM zostaja wielkimi literami).
+/// "Obciazenie CPU" -> "obciazenie CPU" (skroty jak CPU/GPU/VRAM zostaja wielkimi literami,
+/// takze na poczatku: "CPU load" zostaje bez zmian).
 fn lowercase_first(text: &str) -> String {
     let mut chars = text.chars();
     match chars.next() {
-        Some(first) => first.to_lowercase().chain(chars).collect(),
-        None => String::new(),
+        Some(first) if !chars.clone().next().is_some_and(char::is_uppercase) => first.to_lowercase().chain(chars).collect(),
+        _ => text.to_owned(),
     }
 }
 
@@ -1478,11 +1550,11 @@ fn widget_context_menu(
     metric: Metric,
     actions: &mut Vec<WidgetAction>,
 ) {
-    if ui.button(if pinned { "Odepnij" } else { "Przypnij" }).clicked() {
+    if ui.button(if pinned { tr("Odepnij", "Unpin") } else { tr("Przypnij", "Pin") }).clicked() {
         actions.push(WidgetAction::TogglePin(id));
         ui.close();
     }
-    ui.menu_button("Typ karty", |ui| {
+    ui.menu_button(tr("Typ karty", "Card type"), |ui| {
         for option in WidgetKind::for_metric(metric) {
             if ui.selectable_label(option == kind, option.label()).clicked() {
                 actions.push(WidgetAction::SetKind(id, option));
@@ -1490,7 +1562,7 @@ fn widget_context_menu(
             }
         }
     });
-    ui.menu_button("Metryka", |ui| {
+    ui.menu_button(tr("Metryka", "Metric"), |ui| {
         for option in Metric::ALL {
             if ui.selectable_label(option == metric, option.label()).clicked() {
                 actions.push(WidgetAction::SetMetric(id, option));
@@ -1499,15 +1571,15 @@ fn widget_context_menu(
         }
     });
     ui.separator();
-    if ui.button("Duplikuj").clicked() {
+    if ui.button(tr("Duplikuj", "Duplicate")).clicked() {
         actions.push(WidgetAction::Duplicate(id));
         ui.close();
     }
-    if ui.button("Na wierzch").clicked() {
+    if ui.button(tr("Na wierzch", "Bring to front")).clicked() {
         actions.push(WidgetAction::BringToFront(id));
         ui.close();
     }
-    if ui.button("Usuń").clicked() {
+    if ui.button(tr("Usuń", "Delete")).clicked() {
         actions.push(WidgetAction::Delete(id));
         ui.close();
     }

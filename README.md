@@ -65,6 +65,7 @@ cargo clippy --all-targets      # lint - ma przechodzić bez ostrzeżeń
 |---|---|
 | `src/main.rs` | start: blokada instancji, logger, okno overlaya (eframe, renderer glow) |
 | `src/config.rs` | model `config.toml`, walidacja, migracje starych formatów |
+| `src/i18n.rs` | tłumaczenia PL/EN (`tr`), wykrywanie języka Windows |
 | `src/metrics.rs` | katalog metryk (nazwy, jednostki, zakresy, progi, podzespół) |
 | `src/widgets.rs` | rysowanie kart na Painterze egui |
 | `src/icons.rs` | ikony Phosphor (font) |

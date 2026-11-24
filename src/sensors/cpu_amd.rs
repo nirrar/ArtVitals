@@ -25,6 +25,7 @@ use windows::core::w;
 
 use super::cpu_temp::EnergyMeter;
 use super::pawnio::PawnIo;
+use crate::i18n::tr;
 
 // Moduly z oficjalnego wydania PawnIO.Modules 0.2.12 (to samo wydanie co IntelMSR.bin), SHA-256:
 // AMDFamily17.bin dae74615761b78bdf064dfb3e136252ddcc6fc727d88f14738d0e5800d427a91
@@ -87,14 +88,23 @@ impl AmdSensor {
             }
             0x0F => {
                 if !info.has_thermal_sensor {
-                    return Err("Ten procesor AMD (rodzina 0Fh) nie ma cyfrowego czujnika temperatury".to_owned());
+                    return Err(tr(
+                        "Ten procesor AMD (rodzina 0Fh) nie ma cyfrowego czujnika temperatury",
+                        "This AMD CPU (family 0Fh) has no digital temperature sensor",
+                    )
+                    .to_owned());
                 }
                 let cores = u64::from(info.core_count.clamp(1, 2));
                 (AMD_FAMILY0F_MODULE, "AMDFamily0F", Kind::Family0F { offset: k8_temp_offset(info.model), cores })
             }
             family => {
                 return Err(format!(
-                    "Procesor AMD rodziny {family:X}h nie jest obslugiwany (temperatura i moc niedostepne)"
+                    "{} {family:X}h {}",
+                    tr("Procesor AMD rodziny", "AMD CPU family"),
+                    tr(
+                        "nie jest obslugiwany (temperatura i moc niedostepne)",
+                        "is not supported (temperature and power unavailable)"
+                    )
                 ));
             }
         };
@@ -117,7 +127,7 @@ impl AmdSensor {
     fn read_msr(&self, msr: u64) -> Result<u64, String> {
         self.pawnio
             .execute_one(c"ioctl_read_msr", &[msr])
-            .map_err(|err| format!("Odczyt MSR 0x{msr:X} nieudany: {err}"))
+            .map_err(|err| format!("{} 0x{msr:X} {}: {err}", tr("Odczyt MSR", "MSR"), tr("nieudany", "read failed")))
     }
 
     fn execute_u32(&self, function: &CStr, input: &[u64]) -> Result<u32, String> {

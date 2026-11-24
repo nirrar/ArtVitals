@@ -76,7 +76,10 @@ fn notify_running_instance() {
             unsafe {
                 MessageBoxW(
                     None,
-                    w!("ArtVitals już działa (prawdopodobnie uruchomiony jako administrator).\n\nOtwórz konfigurację skrótem klawiszowym albo z ikony w zasobniku."),
+                    &HSTRING::from(crate::i18n::tr(
+                        "ArtVitals już działa (prawdopodobnie uruchomiony jako administrator).\n\nOtwórz konfigurację skrótem klawiszowym albo z ikony w zasobniku.",
+                        "ArtVitals is already running (probably as administrator).\n\nOpen the settings with the keyboard shortcut or from the tray icon.",
+                    )),
                     w!("ArtVitals"),
                     MB_OK | MB_ICONINFORMATION,
                 );

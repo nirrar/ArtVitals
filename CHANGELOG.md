@@ -23,6 +23,17 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
   - `AMDFamily10.bin` - `6443080b2968474ffbc38aa4356cc56f9664349fa4b917afdb33027d6bb50525`
   - `AMDFamily0F.bin` - `a6e11619e87a97820705a6523714f22d676ce44f902631833d4429b89d509d55`
   - (`IntelMSR.bin` - `30a5a302283de1e080dfee99e686eca91d7e53e911095cb91a320fb961f1ce12`)
+- Interfejs po angielsku. Język wybierany automatycznie z języka interfejsu Windows (polski system
+  -> polski, każdy inny -> angielski) albo ręcznie: Ogólne -> „Język / Language” (Auto (system) /
+  Polski / English), zmiana działa od razu (okno konfiguracji, menu zasobnika, napisy na kartach).
+  Nowe pole `language` w `config.toml` (`auto` / `pl` / `en`, domyślnie `auto`) - stare pliki
+  wczytują się bez zmian.
+- Przetłumaczone także komunikaty czujników w oknie „Czujniki” (CPU, PawnIO, FPS) i okno
+  „program już działa”. Komunikaty czujników GPU i wentylatorów - jeszcze tylko po polsku.
+
+### Naprawione
+- Opis progów kolorów karty FPS: „fPS” -> „FPS” (skróty na początku nazwy metryki zostają
+  wielkimi literami).
 
 ## [0.5.0] - 2026-11-24
 ### Dodane
