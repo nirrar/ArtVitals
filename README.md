@@ -108,3 +108,6 @@ Do zrobienia (propozycje):
   i sterownika Linuksa `k10temp`
 - Identyfikatory zdarzeń ETW na podstawie [PresentMon](https://github.com/GameTechDev/PresentMon) (MIT),
   odczyt sensorów NVAPI na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0)
+- Odczyty GPU AMD (ADL) i Intel (IGCL) na podstawie [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (MPL-2.0);
+  układy struktur z [AMD Display Library SDK](https://github.com/GPUOpen-LibrariesAndSDKs/display-library) (MIT)
+  i [Intel Graphics Control Library](https://github.com/intel/drivers.gpu.control-library) (`igcl_api.h`, MIT)
