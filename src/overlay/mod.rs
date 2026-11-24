@@ -6,6 +6,7 @@ mod app;
 mod blur;
 mod hotkey;
 mod layout;
+mod screenshot;
 mod settings;
 mod tray;
 mod ui_kit;

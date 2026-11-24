@@ -526,6 +526,8 @@ pub struct Config {
     /// Powiekszenie tekstu kart 0..=MAX_FONT_BOOST pt (karty rosna razem z tekstem).
     pub font_boost: u32,
     pub panel_theme: PanelTheme,
+    /// Plik zrzutu z gry (w katalogu konfiguracji) jako tlo podgladu ekranu; pusty = tlo domyslne.
+    pub preview_background: String,
     pub widgets: Vec<WidgetConfig>,
 }
 
@@ -547,6 +549,7 @@ impl Default for Config {
             overlay_opacity: 1.0,
             font_boost: 0,
             panel_theme: PanelTheme::Dark,
+            preview_background: String::new(),
             widgets: default_widgets(),
         }
     }

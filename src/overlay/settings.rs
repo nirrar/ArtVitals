@@ -18,6 +18,7 @@ use eframe::egui::{
 
 use super::app::{OverlayApp, WidgetAction, clamp_to_screen};
 use super::blur::BackdropBlur;
+use super::screenshot;
 use super::hotkey::{HotkeySlot, hotkey_parts, hotkey_string, selectable_keys, split_hotkey};
 use super::layout::{Guide, SnapSettings, snap_move, snap_resize};
 use super::ui_kit::{self, Leading, Palette, SheetButton};
@@ -101,6 +102,8 @@ pub struct SettingsState {
     edit_snapshot: Option<WidgetConfig>,
     /// Cala konfiguracja z chwili otwarcia ustawien ogolnych - "Anuluj" ja przywraca.
     general_snapshot: Option<Config>,
+    /// Wczytany zrzut z gry: (nazwa pliku z konfiguracji, tekstura). Nazwa bez tekstury = blad odczytu.
+    background: Option<(String, Option<egui::TextureHandle>)>,
 }
 
 impl Default for SettingsState {
@@ -121,6 +124,7 @@ impl Default for SettingsState {
             sheet_generation: 0,
             edit_snapshot: None,
             general_snapshot: None,
+            background: None,
         }
     }
 }
@@ -395,6 +399,8 @@ impl OverlayApp {
             ui.add_space(12.0);
             let percent = format!("{:.0}%", self.preview_zoom() * 100.0);
             zoom_command = ui_kit::pill_buttons(ui, pal, &["−", &percent, "+", "Dopasuj"]);
+            ui.add_space(12.0);
+            self.background_menu(ui, pal);
         });
         ui.add_space(10.0);
 
@@ -456,6 +462,9 @@ impl OverlayApp {
         let painter = stage_ui.painter().clone();
         painter.rect_filled(stage, CornerRadius::same(16), Color32::from_rgb(10, 12, 16));
         paint_screen_backdrop(&painter, transform.rect(screen), self.config.grid_size * 4.0 * transform.zoom);
+        if let Some(texture) = self.background_texture(ui.ctx()) {
+            paint_screenshot(&painter, transform.rect(screen), &texture);
+        }
         self.canvas_widgets(&mut stage_ui, &painter, transform, actions);
         painter.rect_stroke(stage, CornerRadius::same(16), Stroke::new(1.0, pal.separator), StrokeKind::Inside);
 
@@ -469,6 +478,64 @@ impl OverlayApp {
             .color(pal.secondary),
         );
         self.paint_toast(ui, stage);
+    }
+
+    /// Menu "Tlo" nad podgladem: zrzut z gry z pliku lub schowka, powrot do tla domyslnego.
+    fn background_menu(&mut self, ui: &mut egui::Ui, pal: &Palette) {
+        let dir = config::config_dir();
+        let mut stored: Option<Result<String, String>> = None;
+        ui.menu_button(RichText::new("Tło: zrzut z gry").color(pal.accent), |ui| {
+            if ui.button("Wczytaj zrzut z pliku…").clicked() {
+                ui.close();
+                if let Some(path) = screenshot::pick_image_file() {
+                    // Najpierw sprawdzamy, czy obraz sie dekoduje - dopiero potem kopiujemy.
+                    stored = Some(screenshot::load_image(&path).and_then(|_| screenshot::store_file(&path, &dir)));
+                }
+            }
+            if ui.button("Wklej ze schowka").on_hover_text("Zrzut w grze: PrintScreen albo Win+Shift+S").clicked() {
+                ui.close();
+                stored = Some(screenshot::clipboard_image().and_then(|image| screenshot::store_image(&image, &dir)));
+            }
+            if !self.config.preview_background.is_empty() && ui.button("Usuń tło").clicked() {
+                ui.close();
+                screenshot::clear(&dir);
+                self.config.preview_background.clear();
+                self.settings.background = None;
+                self.mark_dirty();
+            }
+        });
+        match stored {
+            Some(Ok(name)) => {
+                self.config.preview_background = name;
+                // Ta sama nazwa pliku moze miec nowa zawartosc - wymuszamy ponowne wczytanie.
+                self.settings.background = None;
+                self.mark_dirty();
+                self.status = Some(("Wczytano zrzut jako tło podglądu".to_owned(), false));
+            }
+            Some(Err(err)) => self.status = Some((err, true)),
+            None => {}
+        }
+    }
+
+    /// Tekstura zrzutu z gry (wczytywana raz, ponownie po zmianie pliku w konfiguracji).
+    fn background_texture(&mut self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
+        let name = &self.config.preview_background;
+        if name.is_empty() {
+            self.settings.background = None;
+            return None;
+        }
+        if self.settings.background.as_ref().is_none_or(|(loaded, _)| loaded != name) {
+            let texture = match screenshot::load_image(&config::config_dir().join(name)) {
+                Ok(image) => Some(ctx.load_texture("preview_background", image, egui::TextureOptions::LINEAR)),
+                Err(err) => {
+                    log::warn!("Tlo podgladu: {err}");
+                    self.status = Some((err, true));
+                    None
+                }
+            };
+            self.settings.background = Some((name.clone(), texture));
+        }
+        self.settings.background.as_ref().and_then(|(_, texture)| texture.clone())
     }
 
     fn preview_zoom(&self) -> f32 {
@@ -1514,6 +1581,21 @@ fn widget_context_menu(
 }
 
 /// Tlo monitora na podgladzie: ciemny gradient udajacy ekran gry i kropki siatki.
+/// Zrzut z gry w prostokacie ekranu - wypelnia go w calosci (przy innych proporcjach przyciety
+/// po srodku), lekko przyciemniony, zeby karty pozostaly czytelne.
+fn paint_screenshot(painter: &egui::Painter, screen: Rect, texture: &egui::TextureHandle) {
+    let [w, h] = texture.size().map(|v| v as f32);
+    let (screen_aspect, image_aspect) = (screen.width() / screen.height(), w / h);
+    let uv = if image_aspect > screen_aspect {
+        let span = screen_aspect / image_aspect;
+        Rect::from_min_max(pos2((1.0 - span) * 0.5, 0.0), pos2((1.0 + span) * 0.5, 1.0))
+    } else {
+        let span = image_aspect / screen_aspect;
+        Rect::from_min_max(pos2(0.0, (1.0 - span) * 0.5), pos2(1.0, (1.0 + span) * 0.5))
+    };
+    painter.image(texture.id(), screen, uv, Color32::from_gray(225));
+}
+
 fn paint_screen_backdrop(painter: &egui::Painter, screen: Rect, dot_spacing: f32) {
     let mut mesh = Mesh::default();
     let top = Color32::from_rgb(40, 66, 102);
