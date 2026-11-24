@@ -26,6 +26,8 @@ use windows::Win32::UI::Shell::{FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPA
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 use windows::core::{HSTRING, w};
 
+use crate::i18n::{Lang, current, tr};
+
 /// Nazwa pliku tla (bez rozszerzenia) w katalogu konfiguracji.
 const BACKGROUND_STEM: &str = "preview-background";
 /// Wiekszy obraz nie zmiesci sie w teksturze GPU (limit egui/OpenGL) - taki zrzut odrzucamy.
@@ -43,9 +45,13 @@ pub fn pick_image_file() -> Option<PathBuf> {
     ensure_com();
     unsafe {
         let dialog: IFileOpenDialog = CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
-        let filters = [COMDLG_FILTERSPEC { pszName: w!("Obrazy (PNG, JPG, BMP)"), pszSpec: w!("*.png;*.jpg;*.jpeg;*.bmp") }];
+        let (filter_name, title) = match current() {
+            Lang::Pl => (w!("Obrazy (PNG, JPG, BMP)"), w!("Zrzut ekranu z gry")),
+            Lang::En => (w!("Images (PNG, JPG, BMP)"), w!("Game screenshot")),
+        };
+        let filters = [COMDLG_FILTERSPEC { pszName: filter_name, pszSpec: w!("*.png;*.jpg;*.jpeg;*.bmp") }];
         let _ = dialog.SetFileTypes(&filters);
-        let _ = dialog.SetTitle(w!("Zrzut ekranu z gry"));
+        let _ = dialog.SetTitle(title);
         // Wlascicielem jest okno konfiguracji (aktywne w chwili klikniecia) - dialog jest modalny.
         let owner = GetForegroundWindow();
         dialog.Show(Some(owner).filter(|h: &HWND| !h.is_invalid())).ok()?;
@@ -60,7 +66,7 @@ pub fn pick_image_file() -> Option<PathBuf> {
 /// Dekoduje plik obrazu (PNG/JPG/BMP/...) przez WIC do RGBA.
 pub fn load_image(path: &Path) -> Result<ColorImage, String> {
     ensure_com();
-    let fail = |err: windows::core::Error| format!("Nie można odczytać obrazu {}: {err}", path.display());
+    let fail = |err: windows::core::Error| format!("{} {}: {err}", tr("Nie można odczytać obrazu", "Cannot read image"), path.display());
     unsafe {
         let factory: IWICImagingFactory =
             CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER).map_err(fail)?;
@@ -89,10 +95,13 @@ pub fn load_image(path: &Path) -> Result<ColorImage, String> {
 
 fn check_size(width: usize, height: usize) -> Result<(), String> {
     if width == 0 || height == 0 {
-        return Err("Obraz jest pusty".to_owned());
+        return Err(tr("Obraz jest pusty", "The image is empty").to_owned());
     }
     if width > MAX_IMAGE_SIDE || height > MAX_IMAGE_SIDE {
-        return Err(format!("Obraz jest za duży ({width}x{height}, maks. {MAX_IMAGE_SIDE} px na bok)"));
+        return Err(format!(
+            "{} ({width}x{height}, max {MAX_IMAGE_SIDE} px)",
+            tr("Obraz jest za duży", "The image is too large")
+        ));
     }
     Ok(())
 }
@@ -100,15 +109,21 @@ fn check_size(width: usize, height: usize) -> Result<(), String> {
 /// Obraz ze schowka (format CF_DIB - PrintScreen, Win+Shift+S, wiekszosc programow).
 pub fn clipboard_image() -> Result<ColorImage, String> {
     unsafe {
-        OpenClipboard(None).map_err(|err| format!("Schowek jest zajęty: {err}"))?;
+        OpenClipboard(None).map_err(|err| format!("{} {err}", tr("Schowek jest zajęty:", "The clipboard is busy:")))?;
         let result = (|| {
             let handle: HANDLE = GetClipboardData(u32::from(CF_DIB.0))
-                .map_err(|_| "W schowku nie ma obrazu - zrób zrzut (PrintScreen lub Win+Shift+S)".to_owned())?;
+                .map_err(|_| {
+                    tr(
+                        "W schowku nie ma obrazu - zrób zrzut (PrintScreen lub Win+Shift+S)",
+                        "No image in the clipboard - take a screenshot (PrintScreen or Win+Shift+S)",
+                    )
+                    .to_owned()
+                })?;
             let global = HGLOBAL(handle.0);
             let size = GlobalSize(global);
             let data = GlobalLock(global) as *const u8;
             if data.is_null() {
-                return Err("Nie można odczytać schowka".to_owned());
+                return Err(tr("Nie można odczytać schowka", "Cannot read the clipboard").to_owned());
             }
             let bytes = std::slice::from_raw_parts(data, size).to_vec();
             let _ = GlobalUnlock(global);
@@ -123,7 +138,7 @@ pub fn clipboard_image() -> Result<ColorImage, String> {
 fn parse_dib(bytes: &[u8]) -> Result<ColorImage, String> {
     let u16_at = |at: usize| bytes.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
     let u32_at = |at: usize| bytes.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-    let bad = || "Nieobsługiwany format obrazu w schowku".to_owned();
+    let bad = || tr("Nieobsługiwany format obrazu w schowku", "Unsupported image format in the clipboard").to_owned();
     let header_size = u32_at(0).ok_or_else(bad)? as usize;
     let width = u32_at(4).ok_or_else(bad)? as i32;
     let height = u32_at(8).ok_or_else(bad)? as i32;
@@ -201,7 +216,7 @@ pub fn store_file(source: &Path, dir: &Path) -> Result<String, String> {
     let name = format!("{BACKGROUND_STEM}.{extension}");
     std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     remove_backgrounds(dir);
-    std::fs::copy(source, dir.join(&name)).map_err(|err| format!("Nie można zapisać tła: {err}"))?;
+    std::fs::copy(source, dir.join(&name)).map_err(|err| format!("{} {err}", tr("Nie można zapisać tła:", "Cannot save the background:")))?;
     Ok(name)
 }
 
@@ -210,7 +225,7 @@ pub fn store_image(image: &ColorImage, dir: &Path) -> Result<String, String> {
     let name = format!("{BACKGROUND_STEM}.bmp");
     std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     remove_backgrounds(dir);
-    write_bmp(image, &dir.join(&name)).map_err(|err| format!("Nie można zapisać tła: {err}"))?;
+    write_bmp(image, &dir.join(&name)).map_err(|err| format!("{} {err}", tr("Nie można zapisać tła:", "Cannot save the background:")))?;
     Ok(name)
 }
 

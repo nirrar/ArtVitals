@@ -495,19 +495,20 @@ impl OverlayApp {
     fn background_menu(&mut self, ui: &mut egui::Ui, pal: &Palette) {
         let dir = config::config_dir();
         let mut stored: Option<Result<String, String>> = None;
-        ui.menu_button(RichText::new("Tło: zrzut z gry").color(pal.accent), |ui| {
-            if ui.button("Wczytaj zrzut z pliku…").clicked() {
+        ui.menu_button(RichText::new(tr("Tło: zrzut z gry", "Background: game screenshot")).color(pal.accent), |ui| {
+            if ui.button(tr("Wczytaj zrzut z pliku…", "Load screenshot from file…")).clicked() {
                 ui.close();
                 if let Some(path) = screenshot::pick_image_file() {
                     // Najpierw sprawdzamy, czy obraz sie dekoduje - dopiero potem kopiujemy.
                     stored = Some(screenshot::load_image(&path).and_then(|_| screenshot::store_file(&path, &dir)));
                 }
             }
-            if ui.button("Wklej ze schowka").on_hover_text("Zrzut w grze: PrintScreen albo Win+Shift+S").clicked() {
+            if ui.button(tr("Wklej ze schowka", "Paste from clipboard"))
+                .on_hover_text(tr("Zrzut w grze: PrintScreen albo Win+Shift+S", "In game: PrintScreen or Win+Shift+S")).clicked() {
                 ui.close();
                 stored = Some(screenshot::clipboard_image().and_then(|image| screenshot::store_image(&image, &dir)));
             }
-            if !self.config.preview_background.is_empty() && ui.button("Usuń tło").clicked() {
+            if !self.config.preview_background.is_empty() && ui.button(tr("Usuń tło", "Remove background")).clicked() {
                 ui.close();
                 screenshot::clear(&dir);
                 self.config.preview_background.clear();
@@ -521,7 +522,7 @@ impl OverlayApp {
                 // Ta sama nazwa pliku moze miec nowa zawartosc - wymuszamy ponowne wczytanie.
                 self.settings.background = None;
                 self.mark_dirty();
-                self.status = Some(("Wczytano zrzut jako tło podglądu".to_owned(), false));
+                self.status = Some((tr("Wczytano zrzut jako tło podglądu", "Screenshot loaded as preview background").to_owned(), false));
             }
             Some(Err(err)) => self.status = Some((err, true)),
             None => {}
@@ -1018,11 +1019,12 @@ impl OverlayApp {
                         .changed();
                 });
                 ui_kit::divider(ui, pal);
-                ui_kit::row(ui, pal, "Kolor tła", |ui| {
-                    if ui.small_button("Wszystkim kartom").on_hover_text("Ustaw ten kolor i krycie tła na wszystkich kartach").clicked() {
+                ui_kit::row(ui, pal, tr("Kolor tła", "Background color"), |ui| {
+                    if ui.small_button(tr("Wszystkim kartom", "All cards"))
+                        .on_hover_text(tr("Ustaw ten kolor i krycie tła na wszystkich kartach", "Apply this background color and opacity to all cards")).clicked() {
                         apply_background_to_all = Some((w.background_color, w.background_opacity));
                     }
-                    if ui.small_button("Domyślny").clicked() {
+                    if ui.small_button(tr("Domyślny", "Default")).clicked() {
                         w.background_color = config::DEFAULT_CARD_BACKGROUND;
                         changed = true;
                     }
