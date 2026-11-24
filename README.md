@@ -32,17 +32,17 @@ The whole thing is **a single portable exe**, no installer.
 
 ## Features
 
-| | |
+| Feature | Details |
 |---|---|
-| 📊 **Cards** | line graph with history, gauge with rings, bar, big number, and a fans card with spinning rotors |
-| 🎯 **Frame metrics** | FPS, average FPS, 1% low, 0.1% low and a frame-by-frame frame time graph - DirectX 9-12, Vulkan and OpenGL |
-| 🌡️ **Sensors** | load, temperatures (incl. GPU hotspot and memory junction), clocks, power draw, VRAM, RAM, fan speeds, AIO pump and liquid temperature |
-| ➕ **Extra metrics** | add readings from the same component to any card: as a line on the graph, a separate mini graph or a plain value |
-| 🎨 **Look** | color thresholds (smooth fade to yellow and red), per-card accent and background color, opacity, text size boost up to +10 pt |
-| 🖼️ **Settings window** | full-screen preview with zoom, grid and edge snapping; **use a game screenshot as the background** to place cards around your HUD |
-| ⌨️ **Global hotkeys** | show/hide the overlay and the settings window - record them or build them from modifiers |
-| 🌍 **Language** | English and Polish, picked automatically from the Windows display language |
-| 💼 **Portable** | config and log live next to the exe (when the folder is writable) - carry it on a USB stick |
+| **Cards** | line graph with history, gauge with rings, bar, big number, and a fans card with spinning rotors |
+| **Frame metrics** | FPS, average FPS, 1% low, 0.1% low and a frame-by-frame frame time graph - DirectX 9-12, Vulkan and OpenGL |
+| **Sensors** | load, temperatures (incl. GPU hotspot and memory junction), clocks, power draw, VRAM, RAM, fan speeds, AIO pump and liquid temperature |
+| **Extra metrics** | add readings from the same component to any card: as a line on the graph, a separate mini graph or a plain value |
+| **Look** | color thresholds (smooth fade to yellow and red), per-card accent and background color, opacity, text size boost up to +10 pt |
+| **Settings window** | full-screen preview with zoom, grid and edge snapping; **use a game screenshot as the background** to place cards around your HUD |
+| **Global hotkeys** | show/hide the overlay and the settings window - record them or build them from modifiers |
+| **Language** | English and Polish, picked automatically from the Windows display language |
+| **Portable** | config and log live next to the exe (when the folder is writable) - carry it on a USB stick |
 
 <div align="center">
 <img src="docs/settings.png" alt="Settings window with the screen preview" width="880">
