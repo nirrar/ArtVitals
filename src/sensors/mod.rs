@@ -11,6 +11,8 @@ mod cpu_temp;
 pub mod fans;
 pub mod fps;
 mod gpu;
+mod gpu_amd;
+mod gpu_intel;
 mod memory;
 mod nvapi;
 mod pawnio;

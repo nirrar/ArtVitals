@@ -8,6 +8,22 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
 i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 
+## [Unreleased]
+### Dodane
+- Karty graficzne AMD Radeon (ADL ze sterownika, `atiadlxx.dll`): temperatura, hotspot,
+  temperatura pamięci, obciążenie, zegary rdzenia i pamięci, pobór mocy, wentylator (% i RPM), VRAM.
+- Karty graficzne Intel Arc i zintegrowane (Intel Graphics Control Library, `ControlLib.dll`):
+  temperatura GPU i pamięci, obciążenie, zegary, pobór mocy, wentylator, VRAM (karty z własną pamięcią).
+- Obroty wentylatora GPU NVIDIA (RPM) przez NVAPI, z rezerwą w NVML.
+- Automatyczny wybór karty: dedykowana przed zintegrowaną, przy kilku dedykowanych kolejność
+  NVIDIA, AMD, Intel. Okno „Czujniki” wyjaśnia, którego odczytu (hotspot / pamięć) brakuje i dlaczego.
+
+### Naprawione
+- Indeksy sensorów NVAPI dobierane jak w LibreHardwareMonitor (prefiks „NVIDIA GeForce RTX 40/50”),
+  a dla kart bez „GeForce” w nazwie - wg architektury z NVML. Wcześniej np. „RTX 5000 Ada”
+  dostawała układ kart RTX 50 (brak hotspotu, zła temperatura pamięci).
+- Przy kilku kartach NVIDIA odczyty NVAPI pochodzą z tej samej karty co NVML (dopasowanie po szynie PCI).
+
 ## [0.5.0] - 2026-11-24
 ### Dodane
 - Powiększenie tekstu kart (Ogólne → Overlay → „Powiększenie tekstu”, +0 do +10 pt względem
