@@ -10,6 +10,14 @@ i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 
 ## [Unreleased]
 ### Dodane
+- Wersja portable: `config.toml` i `overlay.log` w folderze z plikiem exe, jeśli da się w nim
+  zapisywać (inaczej, np. w Program Files, dalej `%APPDATA%\ArtVitals`). Przy pierwszym starcie
+  konfiguracja jest kopiowana z `%APPDATA%\ArtVitals`. Zmienna `ARTVITALS_CONFIG_DIR` wymusza katalog.
+- Pomiar FPS gier Vulkan i OpenGL: zdarzenia jądra grafiki (DxgKrnl Present_Info) dla procesów,
+  które nie prezentują przez DXGI/D3D9 (bez podwójnego liczenia klatek gier DirectX).
+- Karta „Wentylatory”: obroty pomp, wentylatorów AIO, płyty głównej i GPU z animowanym wirnikiem
+  (szybkość obrotu zależna od RPM), wypełnienie PWM, temperatura cieczy AIO; wybór pokazywanych
+  wentylatorów w ustawieniach karty.
 - Temperatura i pobór mocy procesorów AMD (wymaga PawnIO i administratora, jak dla Intela):
   - Ryzen / Threadripper / EPYC (Zen, rodziny 17h, 19h, 1Ah) - temperatura pakietu „Tctl/Tdie”
     z rejestru SMN THM_TCON_CUR_TMP (z korektą -49 °C i przesunięciem Tdie dla 1600X/1700X/1800X/

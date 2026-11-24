@@ -691,11 +691,40 @@ fn finite_or(value: f32, fallback: f32) -> f32 {
     if value.is_finite() { value } else { fallback }
 }
 
+/// Zmienna srodowiskowa wymuszajaca katalog konfiguracji (testy, kilka profili).
+const CONFIG_DIR_ENV: &str = "ARTVITALS_CONFIG_DIR";
+
+/// Katalog konfiguracji i logu. Wersja portable: folder z plikiem exe, jesli da sie w nim pisac
+/// (np. pendrive, Pulpit); inaczej (np. Program Files) `%APPDATA%\ArtVitals`.
+/// Wyznaczany raz na uruchomienie, zeby config i log nie rozjechaly sie miedzy katalogami.
 pub fn config_dir() -> PathBuf {
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(APP_DIR_NAME)
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(resolve_config_dir).clone()
+}
+
+fn appdata_dir(name: &str) -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|appdata| PathBuf::from(appdata).join(name))
+}
+
+fn resolve_config_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV) {
+        return PathBuf::from(dir);
+    }
+    let exe_dir = std::env::current_exe().ok().and_then(|exe| exe.parent().map(PathBuf::from));
+    if let Some(dir) = exe_dir.filter(|dir| is_writable(dir)) {
+        return dir;
+    }
+    appdata_dir(APP_DIR_NAME).unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Czy w katalogu da sie utworzyc plik (probny plik jest od razu usuwany).
+fn is_writable(dir: &std::path::Path) -> bool {
+    let probe = dir.join(".artvitals-write-test");
+    let created = std::fs::OpenOptions::new().write(true).create_new(true).open(&probe).is_ok();
+    if created {
+        let _ = std::fs::remove_file(&probe);
+    }
+    created
 }
 
 pub fn config_path() -> PathBuf {
@@ -704,16 +733,20 @@ pub fn config_path() -> PathBuf {
 
 /// Wczytuje konfiguracje; przy braku pliku tworzy domyslna, przy bledzie
 /// skladni zachowuje kopie zepsutego pliku i startuje z domyslnymi ustawieniami.
-/// Kopiuje config.toml ze starego folderu programu (CraftGamingBoard), jesli nowego jeszcze nie ma.
+/// Gdy w katalogu konfiguracji nie ma jeszcze pliku, kopiuje go z poprzedniej lokalizacji:
+/// `%APPDATA%\ArtVitals` (wersja sprzed portable), potem `%APPDATA%\CraftGamingBoard` (stara nazwa).
 fn migrate_legacy_config(path: &std::path::Path) {
     if path.exists() {
         return;
     }
-    let Some(appdata) = std::env::var_os("APPDATA") else { return };
-    let legacy = PathBuf::from(appdata).join(LEGACY_APP_DIR_NAME).join(CONFIG_FILE_NAME);
-    if !legacy.exists() {
+    let Some(legacy) = [APP_DIR_NAME, LEGACY_APP_DIR_NAME]
+        .into_iter()
+        .filter_map(appdata_dir)
+        .map(|dir| dir.join(CONFIG_FILE_NAME))
+        .find(|candidate| candidate.exists() && candidate != path)
+    else {
         return;
-    }
+    };
     let copied = std::fs::create_dir_all(config_dir()).and_then(|_| std::fs::copy(&legacy, path));
     match copied {
         Ok(_) => log::info!("Przeniesiono konfiguracje z {}", legacy.display()),

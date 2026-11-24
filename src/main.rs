@@ -1,6 +1,7 @@
 //! ArtVitals - konfigurowalny overlay statystyk CPU/GPU wyswietlany nad gra.
 //!
-//! Start: blokada drugiej instancji, logger (plik `%APPDATA%\ArtVitals\overlay.log`),
+//! Start: blokada drugiej instancji, logger (plik `overlay.log` w katalogu konfiguracji -
+//! obok exe w wersji portable albo `%APPDATA%\ArtVitals`),
 //! wczytanie config.toml,
 //! utworzenie przezroczystego okna overlaya (zawsze na wierzchu, click-through, bez paska zadan)
 //! i ewentualnie okna konfiguracji. Renderer glow - na Windows niezawodnie obsluguje przezroczystosc.
