@@ -7,7 +7,15 @@ historia zmian: [CHANGELOG.md](CHANGELOG.md).
 
 Rust, Windows. Przezroczysty overlay (eframe 0.37, renderer **glow**) nad grą w trybie Borderless,
 zawsze click-through; konfiguracja w osobnym oknie (drugi viewport egui, tryb immediate).
-Czujniki własne, bez zewnętrznych programów: PDH, PawnIO (MSR Intel), NVML + NVAPI, ETW (FPS).
+Czujniki własne, bez zewnętrznych programów: PDH, PawnIO (MSR Intel), NVML + NVAPI, ETW (FPS),
+GlobalMemoryStatusEx (RAM).
+
+Powiększenie tekstu (`font_boost`): globalna skala tekstu w `config::text_scale()` (atomik, bo rozmiary
+kart liczone są w wielu miejscach bez `Config`). Ustawiana tylko przez `Config::sanitize` i
+`Config::set_font_boost` (ta druga przelicza rozmiary kart); w testach zawsze 1.0. W `widgets.rs`
+`scale` = geometria, `text` = czcionki i wiersze z tekstem; domyślne rozmiary kart w
+`WidgetKind::default_size_at` dzielą się na część stałą i tekstową - przy zmianie układu karty
+aktualizować obie.
 Konfiguracja: `%APPDATA%\ArtVitals\config.toml` (dawniej `CraftGamingBoard` - migracja w `config.rs`).
 
 ## Konwencje (obowiązkowe)
@@ -30,6 +38,11 @@ Konfiguracja: `%APPDATA%\ArtVitals\config.toml` (dawniej `CraftGamingBoard` - mi
 - **Overlay niewidoczny**: winit przy click-through dodaje `WS_EX_LAYERED` bez `SetLayeredWindowAttributes`
   - naprawiane w `overlay/win32.rs::fix_overlay_window` (szukanie okna po tytule + PID).
 - **Szara ramka wokół ekranu**: obwódka/cień DWM Windows 11 - wyłączane atrybutami DWM w tym samym miejscu.
+- **Szara linia 1 px u góry ekranu**: winit (okno bez ramki z cieniem) w `WM_NCCALCSIZE` przesuwa obszar
+  klienta o 1 px - przejmujemy ten komunikat przez `SetWindowSubclass` (`win32::remove_top_border`).
+- **CPU przy otwartym oknie konfiguracji**: wbudowane animacje egui przerysowują z częstotliwością monitora
+  i to w obu oknach. Wartości kart animuje własny `animated()` w `app.rs` z limitem ~30 FPS - nie wracać
+  do `animate_value_with_time` dla rzeczy odświeżanych cyklicznie.
 - **egui::Scene** przeciekał transformacją na overlay i rozmywał tekst - podgląd ekranu ma własny
   zoom/pan (`settings.rs`: `PreviewView`, `ViewTransform`). Nie wracać do `Scene`.
 - **Zrzuty viewportu immediate nie działają** w eframe 0.37 - rozmyte tło okien to zrzut GDI
@@ -40,6 +53,9 @@ Konfiguracja: `%APPDATA%\ArtVitals\config.toml` (dawniej `CraftGamingBoard` - mi
   build **debug** + zmienna `CGB_ALLOW_MULTI=1` (w release nie działa).
 - FPS przez ETW wymaga admina; sesja `ArtVitals-FrameTiming` jest zatrzymywana przy wyjściu
   i przy starcie, jeśli została po awarii.
+- Sesja ETW FPS musi mieć `EVENT_TRACE_USE_MS_FLUSH_TIMER` + krótki `FlushTimer` (50 ms) - zdarzeń
+  Present jest mało bajtowo, więc bez tego przychodzą paczkami co 1 s (skoki FPS, stojący wykres).
+  `compute_stats` liczy okna od ostatniej klatki, nie od `now` - nie zmieniać na `now`.
 - PowerShell 5.1 czyta pliki `.ps1` bez BOM jako ANSI - skrypty pomocnicze trzymać w ASCII.
 
 ## Model danych

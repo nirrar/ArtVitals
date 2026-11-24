@@ -1040,6 +1040,18 @@ impl OverlayApp {
                     .changed();
             });
             ui_kit::divider(ui, pal);
+            ui_kit::row(ui, pal, "Powiększenie tekstu", |ui| {
+                // Karty rosna razem z tekstem (o miejsce zajete przez napisy), wykresy zostaja.
+                let mut boost = self.config.font_boost;
+                if ui
+                    .add(egui::Slider::new(&mut boost, 0..=config::MAX_FONT_BOOST).prefix("+").suffix(" pt"))
+                    .changed()
+                {
+                    self.config.set_font_boost(boost);
+                    changed = true;
+                }
+            });
+            ui_kit::divider(ui, pal);
             changed |= ui_kit::row(ui, pal, "Płynne animacje", |ui| ui_kit::toggle(ui, pal, &mut self.config.animations)).changed();
         });
 
@@ -1054,6 +1066,20 @@ impl OverlayApp {
                 timing |= ui.add(egui::Slider::new(&mut self.config.history_seconds, 10..=600).suffix(" s")).changed();
             });
         });
+
+        ui_kit::group(
+            ui,
+            pal,
+            Some("Pomiar FPS"),
+            Some("Średni FPS oraz 1% i 0.1% low są liczone z ostatnich N sekund gry. Krótsze okno szybciej reaguje na zacięcia i ich koniec, dłuższe daje stabilniejszy wynik (jak w benchmarkach)."),
+            |ui| {
+                ui_kit::row(ui, pal, "Okno średniej i lows", |ui| {
+                    timing |= ui
+                        .add(egui::Slider::new(&mut self.config.fps_stats_seconds, 2..=120).suffix(" s"))
+                        .changed();
+                });
+            },
+        );
 
         ui_kit::group(ui, pal, Some("Układanie kart"), None, |ui| {
             ui_kit::row(ui, pal, "Rozmiar siatki", |ui| {
@@ -1195,7 +1221,10 @@ impl OverlayApp {
             "{}{}",
             data.gpu_name.as_deref().unwrap_or("Brak karty NVIDIA"),
             match &data.fps_process {
-                Some(process) => format!("  ·  FPS mierzone dla: {process}"),
+                Some(process) => format!(
+                    "  ·  FPS mierzone dla: {process} (średnia i lows z ostatnich {} s)",
+                    self.config.fps_stats_seconds
+                ),
                 None => "  ·  FPS: brak aktywnej gry (DirectX 9-12)".to_owned(),
             }
         );

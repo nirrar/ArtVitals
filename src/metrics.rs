@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub enum Device {
     Cpu,
     Gpu,
+    /// Pamiec operacyjna (RAM).
+    Memory,
     /// Klatki mierzonej gry (FPS, czas klatki).
     Game,
 }
@@ -37,10 +39,12 @@ pub enum Metric {
     FpsLow1,
     FpsLow01,
     FrameTime,
+    RamUsage,
+    RamUsed,
 }
 
 impl Metric {
-    pub const ALL: [Metric; 18] = [
+    pub const ALL: [Metric; 20] = [
         Metric::CpuLoad,
         Metric::CpuTemp,
         Metric::CpuClock,
@@ -59,6 +63,8 @@ impl Metric {
         Metric::FpsLow1,
         Metric::FpsLow01,
         Metric::FrameTime,
+        Metric::RamUsage,
+        Metric::RamUsed,
     ];
 
     /// Pozycja w `ALL` - indeks w tablicach odczytow czujnikow.
@@ -70,6 +76,7 @@ impl Metric {
         match self {
             Metric::CpuLoad | Metric::CpuTemp | Metric::CpuClock | Metric::CpuPower => Device::Cpu,
             Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 | Metric::FrameTime => Device::Game,
+            Metric::RamUsage | Metric::RamUsed => Device::Memory,
             _ => Device::Gpu,
         }
     }
@@ -94,6 +101,8 @@ impl Metric {
             Metric::FpsLow1 => "1% low FPS",
             Metric::FpsLow01 => "0.1% low FPS",
             Metric::FrameTime => "Czas klatki",
+            Metric::RamUsage => "Zajętość RAM",
+            Metric::RamUsed => "Użyta pamięć RAM",
         }
     }
 
@@ -118,6 +127,8 @@ impl Metric {
             Metric::FpsLow1 => "1% LOW",
             Metric::FpsLow01 => "0.1% LOW",
             Metric::FrameTime => "FRAME TIME",
+            Metric::RamUsage => "RAM",
+            Metric::RamUsed => "RAM",
         }
     }
 
@@ -128,6 +139,7 @@ impl Metric {
             Metric::CpuPower | Metric::GpuPower => " W",
             Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => "",
             Metric::FrameTime => " ms",
+            Metric::RamUsed => " GB",
             _ => "%",
         }
     }
@@ -146,13 +158,15 @@ impl Metric {
             Metric::GpuPower => (0.0, 450.0),
             Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => (0.0, 240.0),
             Metric::FrameTime => (0.0, 50.0),
+            // Skala stala (typowy PC do gier); wykres i tak pokazuje zmiany, procent jest w RamUsage.
+            Metric::RamUsed => (0.0, 64.0),
             _ => (0.0, 100.0),
         }
     }
 
     /// Czy metryka ma progi kolorow (zegary nie maja - wysoki zegar to nic zlego).
     pub fn has_thresholds(self) -> bool {
-        !matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock)
+        !matches!(self, Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed)
     }
 
     /// Czy wieksza wartosc jest gorsza (temperatura, obciazenie). Dla FPS jest odwrotnie -
@@ -163,7 +177,7 @@ impl Metric {
 
     /// Liczba miejsc po przecinku przy wyswietlaniu.
     pub fn decimals(self) -> usize {
-        if self == Metric::FrameTime { 1 } else { 0 }
+        if matches!(self, Metric::FrameTime | Metric::RamUsed) { 1 } else { 0 }
     }
 
     /// Domyslne progi (ostrzezenie, krytyczny) w jednostkach metryki.
@@ -184,7 +198,9 @@ impl Metric {
             Metric::FpsLow1 => (45.0, 25.0),
             Metric::FpsLow01 => (30.0, 20.0),
             Metric::FrameTime => (25.0, 40.0),
-            Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock => {
+            Metric::RamUsage => (80.0, 92.0),
+            // Ilosc GB zalezy od wielkosci pamieci - kolor ostrzezenia daje RamUsage.
+            Metric::CpuClock | Metric::GpuClock | Metric::GpuMemClock | Metric::RamUsed => {
                 let (_, max) = self.range();
                 (max * 2.0, max * 2.0)
             }

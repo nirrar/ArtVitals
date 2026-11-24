@@ -29,6 +29,32 @@ pub const VALUE_ROW_HEIGHT: f32 = 15.0;
 /// Tyle dodatkowych wartosci miesci sie w prawej kolumnie naglowka; wiecej = siatka pod naglowkiem.
 pub const HEADER_EXTRAS_MAX: usize = 2;
 const MAX_WIDGET_SIZE: f32 = 2000.0;
+/// Maksymalne powiekszenie tekstu kart (w punktach wzgledem tytulu karty).
+pub const MAX_FONT_BOOST: u32 = 10;
+/// Rozmiar tytulu karty przy skali 1 - od niego liczone jest powiekszenie "+N pt".
+const BASE_TEXT_PT: f32 = 11.0;
+/// Wysokosc paska z etykieta nad osobnym wykresem (czesc `SEPARATE_CHART_HEIGHT` zajeta tekstem).
+pub const SEPARATE_CHART_STRIP: f32 = 12.0;
+
+/// Biezaca skala tekstu kart (bity f32). Globalna, bo rozmiary kart liczone sa w wielu miejscach
+/// bez dostepu do `Config`; ustawiana przez `Config::sanitize` i `Config::set_font_boost`.
+static TEXT_SCALE_BITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
+
+/// Mnoznik czcionek kart wynikajacy z `font_boost`.
+pub fn text_scale() -> f32 {
+    f32::from_bits(TEXT_SCALE_BITS.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+pub fn text_scale_for(boost: u32) -> f32 {
+    (BASE_TEXT_PT + boost.min(MAX_FONT_BOOST) as f32) / BASE_TEXT_PT
+}
+
+fn set_text_scale(scale: f32) {
+    // W testach (rownoleglych) globalna skala zostaje 1.0, zeby testy nie wplywaly na siebie.
+    if !cfg!(test) {
+        TEXT_SCALE_BITS.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,14 +86,26 @@ impl WidgetKind {
         }
     }
 
+    /// Domyslny rozmiar przy biezacej skali tekstu.
     pub fn default_size(self) -> [f32; 2] {
-        match self {
-            WidgetKind::Graph => [200.0, 92.0],
-            WidgetKind::Gauge => [112.0, 112.0],
+        self.default_size_at(text_scale())
+    }
+
+    /// Domyslny rozmiar przy skali tekstu `ts`. Kazdy wymiar = czesc stala (marginesy, wykres)
+    /// plus czesc zajeta tekstem, ktora rosnie z czcionka. Przy `ts` = 1:
+    /// Wykres 200x92, Wskaznik 112x112, Pasek 200x80, Liczba 132x92.
+    pub fn default_size_at(self, ts: f32) -> [f32; 2] {
+        // (stala szer., tekst szer., stala wys., tekst wys.)
+        let (fw, tw, fh, th) = match self {
+            // Naglowek 33 + stopka 12 to tekst; marginesy, odstepy i wykres stale.
+            WidgetKind::Graph => (16.0, 184.0, 47.0, 45.0),
+            // Wartosc wpisana w luk - caly wskaznik rosnie z tekstem.
+            WidgetKind::Gauge => (16.0, 96.0, 16.0, 96.0),
             // Naglowek (tytul + wartosc) + pasek + stopka musza sie zmiescic bez nakladania.
-            WidgetKind::Bar => [200.0, 80.0],
-            WidgetKind::Number => [132.0, 92.0],
-        }
+            WidgetKind::Bar => (16.0, 184.0, 35.0, 45.0),
+            WidgetKind::Number => (16.0, 116.0, 16.0, 76.0),
+        };
+        [fw + tw * ts, fh + th * ts]
     }
 }
 
@@ -291,14 +329,27 @@ impl WidgetConfig {
 
     /// Ile miejsca w pionie zajmuja dodatki na tej karcie (wiersze paskow / osobne wykresy).
     fn extra_rows_height(&self) -> f32 {
+        self.extra_rows_height_at(text_scale())
+    }
+
+    /// Jak `extra_rows_height`, ale przy skali tekstu `ts` (wiersze z tekstem rosna z czcionka).
+    fn extra_rows_height_at(&self, ts: f32) -> f32 {
         match self.kind {
-            WidgetKind::Bar => BAR_EXTRA_ROW_HEIGHT * self.extra.len() as f32,
+            WidgetKind::Bar => BAR_EXTRA_ROW_HEIGHT * ts * self.extra.len() as f32,
             WidgetKind::Graph => {
-                SEPARATE_CHART_HEIGHT * self.extra.iter().filter(|e| e.chart == ExtraChart::Separate).count() as f32
-                    + VALUE_ROW_HEIGHT * self.value_grid_rows() as f32
+                let separate_h = SEPARATE_CHART_HEIGHT + SEPARATE_CHART_STRIP * (ts - 1.0);
+                separate_h * self.extra.iter().filter(|e| e.chart == ExtraChart::Separate).count() as f32
+                    + VALUE_ROW_HEIGHT * ts * self.value_grid_rows() as f32
             }
             _ => 0.0,
         }
+    }
+
+    /// Rozmiar "wzorcowy" karty (domyslny + dodatki) przy skali tekstu `ts` -
+    /// stosunek dwoch takich rozmiarow mowi, o ile przeskalowac karte po zmianie czcionki.
+    fn content_size_at(&self, ts: f32) -> [f32; 2] {
+        let [w, h] = self.kind.default_size_at(ts);
+        [w, h + self.extra_rows_height_at(ts)]
     }
 
     /// Ile wierszy (po 2 wartosci) ma siatka wartosci pod naglowkiem karty "Wykres".
@@ -408,6 +459,7 @@ pub fn default_accent(metric: Metric) -> [u8; 3] {
         Metric::FpsLow1 => [255, 196, 64],
         Metric::FpsLow01 => [255, 140, 66],
         Metric::FrameTime => [120, 226, 84],
+        Metric::RamUsage | Metric::RamUsed => [64, 200, 255],
     }
 }
 
@@ -423,6 +475,7 @@ pub fn default_icon(metric: Metric) -> WidgetIcon {
         Metric::GpuFan => WidgetIcon::Fan,
         Metric::Fps | Metric::FpsAvg | Metric::FpsLow1 | Metric::FpsLow01 => WidgetIcon::GameController,
         Metric::FrameTime => WidgetIcon::Timer,
+        Metric::RamUsage | Metric::RamUsed => WidgetIcon::Memory,
     }
 }
 
@@ -439,6 +492,8 @@ pub struct Config {
     pub overlay_visible: bool,
     pub sample_interval_ms: u64,
     pub history_seconds: u32,
+    /// Z ilu ostatnich sekund liczony jest sredni FPS i 1% / 0.1% low.
+    pub fps_stats_seconds: u32,
     pub grid_size: f32,
     pub snap_to_grid: bool,
     /// Magnetyczne przyciaganie do krawedzi ekranu i innych widgetow.
@@ -447,6 +502,8 @@ pub struct Config {
     pub animations: bool,
     /// Globalny mnoznik krycia calego overlaya 0.1..1.
     pub overlay_opacity: f32,
+    /// Powiekszenie tekstu kart 0..=MAX_FONT_BOOST pt (karty rosna razem z tekstem).
+    pub font_boost: u32,
     pub panel_theme: PanelTheme,
     pub widgets: Vec<WidgetConfig>,
 }
@@ -460,12 +517,14 @@ impl Default for Config {
             overlay_visible: true,
             sample_interval_ms: 1000,
             history_seconds: 60,
+            fps_stats_seconds: 10,
             grid_size: 8.0,
             snap_to_grid: true,
             snap_to_edges: true,
             snap_distance: 10.0,
             animations: true,
             overlay_opacity: 1.0,
+            font_boost: 0,
             panel_theme: PanelTheme::Dark,
             widgets: default_widgets(),
         }
@@ -483,6 +542,8 @@ pub fn suggested_widget(id: u64, metric: Metric, kind: WidgetKind, pos: [f32; 2]
         Metric::Fps => widget
             .with_extra(Metric::FpsAvg, ExtraChart::Value)
             .with_extra(Metric::FpsLow1, ExtraChart::Value),
+        // Karta RAM: procent zajetosci + ile GB uzyte.
+        Metric::RamUsage => widget.with_extra(Metric::RamUsed, ExtraChart::Value),
         _ => widget,
     };
     let footer = match (metric, kind) {
@@ -507,6 +568,31 @@ impl Config {
         samples.clamp(2, 3600) as usize
     }
 
+    pub fn sensor_timing(&self) -> crate::sensors::SensorTiming {
+        crate::sensors::SensorTiming {
+            interval_ms: self.sample_interval_ms,
+            history_len: self.history_len(),
+            fps_window_ms: u64::from(self.fps_stats_seconds) * 1000,
+        }
+    }
+
+    /// Zmienia powiekszenie tekstu i dopasowuje rozmiar kazdej karty: rosnie tylko o miejsce
+    /// zajete przez tekst, wiec wykresy i marginesy zachowuja proporcje, a reczny rozmiar
+    /// (wiekszy/mniejszy od domyslnego) zostaje zachowany proporcjonalnie.
+    pub fn set_font_boost(&mut self, boost: u32) {
+        let boost = boost.min(MAX_FONT_BOOST);
+        let (old, new) = (text_scale_for(self.font_boost), text_scale_for(boost));
+        for widget in &mut self.widgets {
+            let (before, after) = (widget.content_size_at(old), widget.content_size_at(new));
+            for (axis, min_size) in MIN_WIDGET_SIZE.into_iter().enumerate() {
+                let resized = widget.size[axis] * after[axis] / before[axis];
+                widget.size[axis] = finite_or(resized, min_size).clamp(min_size, MAX_WIDGET_SIZE);
+            }
+        }
+        self.font_boost = boost;
+        set_text_scale(new);
+    }
+
     pub fn next_widget_id(&self) -> u64 {
         self.widgets.iter().map(|w| w.id).max().unwrap_or(0) + 1
     }
@@ -515,9 +601,13 @@ impl Config {
     pub fn sanitize(&mut self) {
         self.sample_interval_ms = self.sample_interval_ms.clamp(250, 10_000);
         self.history_seconds = self.history_seconds.clamp(10, 600);
+        self.fps_stats_seconds = self.fps_stats_seconds.clamp(2, 120);
         self.grid_size = finite_or(self.grid_size, 8.0).clamp(2.0, 64.0);
         self.snap_distance = finite_or(self.snap_distance, 10.0).clamp(0.0, 64.0);
         self.overlay_opacity = finite_or(self.overlay_opacity, 1.0).clamp(0.1, 1.0);
+        // Rozmiary kart w pliku sa juz zapisane dla tej czcionki - tylko ustawiamy skale.
+        self.font_boost = self.font_boost.min(MAX_FONT_BOOST);
+        set_text_scale(text_scale_for(self.font_boost));
 
         let mut seen_ids = std::collections::HashSet::new();
         let mut next_id = self.next_widget_id();
@@ -694,6 +784,25 @@ mod tests {
         assert_eq!(config.widgets[0].extra, vec![ExtraMetric { metric: Metric::CpuTemp, chart: ExtraChart::Value }]);
         assert!(!config.to_toml().unwrap().contains("plot_extra"));
         assert!(!config.to_toml().unwrap().contains("secondary"));
+    }
+
+    #[test]
+    fn font_boost_grows_cards_by_text_only_and_roundtrips() {
+        assert_eq!(WidgetKind::Graph.default_size_at(1.0), [200.0, 92.0]);
+        assert_eq!(WidgetKind::Bar.default_size_at(1.0), [200.0, 80.0]);
+        let widget = WidgetConfig::new(1, Metric::GpuLoad, WidgetKind::Graph, [0.0, 0.0])
+            .with_extra(Metric::GpuClock, ExtraChart::Separate);
+        let original = widget.size;
+        let mut config = Config { widgets: vec![widget], ..Default::default() };
+        config.set_font_boost(99);
+        assert_eq!(config.font_boost, MAX_FONT_BOOST);
+        let grown = config.widgets[0].size;
+        assert!(grown[0] > original[0] && grown[1] > original[1]);
+        // Wykres (czesc stala) nie rosnie, wiec karta rosnie wolniej niz czcionka.
+        assert!(grown[1] / original[1] < text_scale_for(MAX_FONT_BOOST));
+        config.set_font_boost(0);
+        assert!((config.widgets[0].size[0] - original[0]).abs() < 0.01);
+        assert!((config.widgets[0].size[1] - original[1]).abs() < 0.01);
     }
 
     #[test]

@@ -8,9 +8,12 @@
 
 mod cpu_load;
 mod cpu_temp;
+pub mod fans;
 pub mod fps;
 mod gpu;
+mod memory;
 mod nvapi;
+mod pawnio;
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -26,6 +29,11 @@ pub struct SensorData {
     pub history: [VecDeque<f32>; Metric::ALL.len()],
     pub vram_used_mb: Option<f32>,
     pub vram_total_mb: Option<f32>,
+    pub ram_total_gb: Option<f32>,
+    /// Wentylatory plyty i AIO (karta "Wentylatory").
+    pub fans: fans::FanSnapshot,
+    /// Obroty wentylatora GPU (RPM), jesli sterownik je podaje.
+    pub gpu_fan_rpm: Option<f32>,
     pub gpu_name: Option<String>,
     /// Czasy ostatnich klatek (ms), klatka po klatce - wykres czasu klatki jest dokladniejszy
     /// niz probki co sekunde.
@@ -79,20 +87,34 @@ impl SensorData {
     }
 }
 
+/// Jak czesto odswiezany jest wykres czasu klatki (~30 Hz), niezaleznie od interwalu odczytow.
+const FRAME_GRAPH_REFRESH: Duration = Duration::from_millis(33);
+
+/// Ustawienia czasowe watku czujnikow (z konfiguracji).
+#[derive(Debug, Clone, Copy)]
+pub struct SensorTiming {
+    pub interval_ms: u64,
+    pub history_len: usize,
+    pub fps_window_ms: u64,
+}
+
 #[derive(Clone)]
 pub struct SensorHub {
     data: Arc<Mutex<SensorData>>,
     interval_ms: Arc<AtomicU64>,
     history_len: Arc<AtomicUsize>,
+    /// Okno sredniego FPS i 1% / 0.1% low (ms) - niezalezne od dlugosci historii wykresu.
+    fps_window_ms: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
 }
 
 impl SensorHub {
-    pub fn start(ctx: eframe::egui::Context, interval_ms: u64, history_len: usize) -> Self {
+    pub fn start(ctx: eframe::egui::Context, timing: SensorTiming) -> Self {
         let hub = Self {
             data: Arc::new(Mutex::new(SensorData::default())),
-            interval_ms: Arc::new(AtomicU64::new(interval_ms)),
-            history_len: Arc::new(AtomicUsize::new(history_len)),
+            interval_ms: Arc::new(AtomicU64::new(timing.interval_ms)),
+            history_len: Arc::new(AtomicUsize::new(timing.history_len)),
+            fps_window_ms: Arc::new(AtomicU64::new(timing.fps_window_ms)),
             stop: Arc::new(AtomicBool::new(false)),
         };
         let worker = hub.clone();
@@ -110,9 +132,10 @@ impl SensorHub {
         self.data.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    pub fn set_timing(&self, interval_ms: u64, history_len: usize) {
-        self.interval_ms.store(interval_ms, Ordering::Relaxed);
-        self.history_len.store(history_len, Ordering::Relaxed);
+    pub fn set_timing(&self, timing: SensorTiming) {
+        self.interval_ms.store(timing.interval_ms, Ordering::Relaxed);
+        self.history_len.store(timing.history_len, Ordering::Relaxed);
+        self.fps_window_ms.store(timing.fps_window_ms, Ordering::Relaxed);
     }
 
     pub fn stop(&self) {
@@ -132,6 +155,8 @@ impl SensorHub {
             issues.push(("Hotspot i temperatura pamięci GPU", issue));
         }
         let mut fps_monitor = fps::FpsMonitor::start().map_err(|err| issues.push(("Pomiar FPS", err))).ok();
+        let (mut fan_monitor, fan_issues) = fans::FanMonitor::new();
+        issues.extend(fan_issues);
         for (source, issue) in &issues {
             log::warn!("{source}: {issue}");
         }
@@ -147,10 +172,10 @@ impl SensorHub {
             let temp = cpu_temp.as_mut().and_then(|s| s.read());
             let cpu_power = cpu_temp.as_mut().and_then(|s| s.read_power());
             let gpu_reading = gpu.as_ref().map(|g| g.read()).unwrap_or_default();
-            // Sredni FPS i lows liczone w tym samym oknie co historia wykresow.
-            let window_s = self.history_len.load(Ordering::Relaxed) as f64
-                * self.interval_ms.load(Ordering::Relaxed) as f64
-                / 1000.0;
+            let ram = memory::read();
+            let fan_snapshot = fan_monitor.read();
+            // Sredni FPS i lows z ostatnich N sekund (ustawienie "Okno sredniej i lows").
+            let window_s = self.fps_window_ms.load(Ordering::Relaxed) as f64 / 1000.0;
             let frames = fps_monitor.as_mut().map(|m| m.read(window_s)).unwrap_or_default();
             let vram_pct = match (gpu_reading.vram_used_mb, gpu_reading.vram_total_mb) {
                 (Some(used), Some(total)) if total > 0.0 => Some(used / total * 100.0),
@@ -180,20 +205,34 @@ impl SensorHub {
                     (Metric::FpsLow1, frames.low1_fps),
                     (Metric::FpsLow01, frames.low01_fps),
                     (Metric::FrameTime, frames.frame_time_ms),
+                    (Metric::RamUsage, ram.usage_pct),
+                    (Metric::RamUsed, ram.used_gb),
                 ];
                 for (metric, value) in values {
                     data.push(metric, value, history_len);
                 }
                 data.vram_used_mb = gpu_reading.vram_used_mb;
                 data.vram_total_mb = gpu_reading.vram_total_mb;
+                data.ram_total_gb = ram.total_gb;
+                data.fans = fan_snapshot;
+                data.gpu_fan_rpm = gpu_reading.fan_rpm;
                 data.frame_times = frames.recent_frames.into_iter().collect();
                 data.fps_process = frames.process;
             }
             ctx.request_repaint();
 
+            // Do nastepnego pelnego odczytu: co ~33 ms odswiezamy tylko serie klatek (wykres
+            // czasu klatki), i to tylko gdy jakas gra wyswietla klatki - bez gry watek po prostu spi.
             let interval = Duration::from_millis(self.interval_ms.load(Ordering::Relaxed));
-            if let Some(rest) = interval.checked_sub(started.elapsed()) {
-                std::thread::sleep(rest);
+            while let Some(rest) = interval.checked_sub(started.elapsed()) {
+                if self.stop.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(rest.min(FRAME_GRAPH_REFRESH));
+                if let Some(frames) = fps_monitor.as_mut().and_then(|m| m.recent_frames()) {
+                    self.lock().frame_times = frames.into_iter().collect();
+                    ctx.request_repaint();
+                }
             }
         }
     }

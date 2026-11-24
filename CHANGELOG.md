@@ -8,6 +8,33 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
 i w pierwszej linii `%APPDATA%\ArtVitals\overlay.log`.
 
+## [0.5.0] - 2026-11-24
+### Dodane
+- Powiększenie tekstu kart (Ogólne → Overlay → „Powiększenie tekstu”, +0 do +10 pt względem
+  tytułu karty, reszta napisów proporcjonalnie). Karty rosną razem z tekstem - tylko o miejsce
+  zajęte przez napisy, więc wykresy i marginesy zachowują proporcje; ręcznie zmieniony rozmiar
+  karty jest przeliczany proporcjonalnie.
+- Pamięć RAM: metryki „Zajętość RAM” (%) i „Użyta pamięć RAM” (GB). Nowa karta RAM od razu
+  pokazuje oba odczyty. Nie wymaga administratora.
+
+## [0.4.1] - 2026-11-23
+
+### Zmienione
+- Średni FPS i 1% / 0.1% low liczone z osobnego, krótszego okna (domyślnie 10 s, ustawienie
+  „Okno średniej i lows” w Ogólnych, 2-120 s) zamiast z całej historii wykresu (60 s) -
+  przy 60 s wartości wyglądały na zamrożone, bo pojedyncza sekunda prawie ich nie zmienia.
+- Wykres czasu klatki odświeżany ~30 razy na sekundę (gdy gra wyświetla klatki) zamiast raz
+  na interwał odczytu - przesuwa się płynnie zamiast skokami.
+
+### Naprawione
+- Zacinanie pomiaru FPS: ETW oddawało zdarzenia klatek paczkami co 1 s, przez co FPS skakał,
+  a wykres czasu klatki stał i przeskakiwał. Sesja ETW opróżnia teraz bufory co 50 ms,
+  a bieżący FPS / lows są liczone od ostatniej odebranej klatki zamiast od chwili odczytu.
+- Wysokie zużycie CPU przy otwartym oknie konfiguracji (35-70% rdzenia): animacje wartości
+  przerysowywały oba okna z częstotliwością monitora. Animacje są teraz ograniczone do ~30 klatek/s.
+- Szara linia 1 px na górnej krawędzi ekranu przy działającym programie (przesunięcie obszaru okna
+  bez ramki w winit) - okno overlaya ma teraz obszar dokładnie równy ekranowi.
+
 ## [0.4.0] - 2026-11-23
 
 ### Dodane

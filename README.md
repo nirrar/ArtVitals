@@ -17,6 +17,7 @@ Aktualna wersja: zobacz `Cargo.toml` / [CHANGELOG.md](CHANGELOG.md).
   - CPU: obciążenie, zegar, temperatura pakietu, pobór mocy,
   - GPU (NVIDIA): obciążenie, temperatura, hotspot, temperatura pamięci, zegar rdzenia i pamięci,
     pobór mocy, wentylator, zajętość VRAM,
+  - pamięć RAM: zajętość (%) i użyte GB,
   - gra: FPS, średni FPS, 1% low, 0.1% low, czas klatki (wykres klatka po klatce).
 - **Dodatkowe metryki na karcie** (z tego samego podzespołu) - na wykresie głównym, jako osobny
   wykres albo sama wartość; na pasku jako paski, na wskaźniku jako pierścienie.
@@ -91,7 +92,8 @@ Do zrobienia (propozycje):
 - [ ] FPS dla Vulkan/OpenGL bez DXGI (zdarzenia DxgKrnl)
 - [ ] Autostart z Windows (jako administrator, przez Harmonogram zadań)
 - [ ] Obsługa GPU AMD/Intel i procesorów AMD
-- [ ] Więcej metryk: RAM, dyski, sieć, wentylatory płyty głównej
+- [x] Pamięć RAM, powiększenie tekstu kart z dopasowaniem rozmiaru
+- [ ] Więcej metryk: dyski, sieć, wentylatory płyty głównej i AIO
 - [ ] Zapis sesji (benchmark) do CSV z podsumowaniem FPS/lows
 - [ ] Profile układu kart per gra
 - [ ] Metadane wersji w pliku exe i wydania na GitHubie

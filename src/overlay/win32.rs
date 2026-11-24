@@ -5,6 +5,10 @@
 //!    Ustawiamy pelne krycie (LWA_ALPHA = 255); przezroczystosc per piksel z renderera dziala dalej.
 //! 2. Ramka: Windows 11 rysuje wokol okien bez ramki cienka szara obwodke, zaokraglone rogi i cien.
 //!    Na overlayu na caly ekran wygladalo to jak ramka wokol monitora - wylaczamy przez DWM.
+//!    Dodatkowo winit dla okna bez ramki z cieniem przesuwa obszar klienta o 1 px w dol
+//!    (WM_NCCALCSIZE, opisany u nich "HACK" dajacy linie 1 px u gory) - na overlayu byla to szara
+//!    linia na gornej krawedzi ekranu. Przejmujemy WM_NCCALCSIZE (subclassing okna): caly
+//!    prostokat okna jest obszarem klienta, bez przesuniecia.
 //! 3. Zrzut okna konfiguracji (do rozmytego tla): eframe nie obsluguje zrzutow okien
 //!    rysowanych w trybie "immediate", wiec kopiujemy piksele z ekranu przez GDI.
 //!
@@ -22,9 +26,12 @@ use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, ClientToScreen, CreateCompatibleBitmap, CreateCompatibleDC,
     DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
 };
+use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GWL_EXSTYLE, GetClientRect, GetWindowLongW, GetWindowThreadProcessId, LWA_ALPHA,
-    SetLayeredWindowAttributes, WS_EX_LAYERED,
+    FindWindowW, GWL_EXSTYLE, GetClientRect, GetWindowLongW, GetWindowThreadProcessId, LWA_ALPHA, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetLayeredWindowAttributes, SetWindowPos, WM_NCCALCSIZE,
+    WS_EX_LAYERED,
 };
 use windows::core::HSTRING;
 
@@ -61,6 +68,7 @@ pub fn fix_overlay_window(title: &str) -> LayeredFix {
             return LayeredFix::Failed(err.to_string());
         }
         remove_window_frame(hwnd);
+        remove_top_border(hwnd);
     }
     LayeredFix::Applied
 }
@@ -79,6 +87,38 @@ unsafe fn remove_window_frame(hwnd: HWND) {
     for (attribute, value, size) in attributes {
         if let Err(err) = unsafe { DwmSetWindowAttribute(hwnd, attribute, value, size) } {
             log::debug!("DwmSetWindowAttribute({}) nieudane: {err}", attribute.0);
+        }
+    }
+}
+
+const OVERLAY_SUBCLASS_ID: usize = 0xA57;
+
+/// Obsluga WM_NCCALCSIZE przed winit: zwrocenie 0 bez zmiany prostokata = caly prostokat okna
+/// jest obszarem klienta (bez ramki i bez przesuniecia o 1 px). Reszta komunikatow idzie dalej do winit.
+unsafe extern "system" fn overlay_subclass_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    _id: usize,
+    _data: usize,
+) -> LRESULT {
+    if message == WM_NCCALCSIZE && wparam.0 != 0 {
+        return LRESULT(0);
+    }
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+unsafe fn remove_top_border(hwnd: HWND) {
+    unsafe {
+        if !SetWindowSubclass(hwnd, Some(overlay_subclass_proc), OVERLAY_SUBCLASS_ID, 0).as_bool() {
+            log::debug!("SetWindowSubclass overlaya nieudane");
+            return;
+        }
+        // SWP_FRAMECHANGED - system ponownie wysyla WM_NCCALCSIZE i przelicza obszar klienta.
+        let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+        if let Err(err) = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags) {
+            log::debug!("SetWindowPos (przeliczenie ramki overlaya) nieudane: {err}");
         }
     }
 }

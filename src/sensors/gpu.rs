@@ -20,6 +20,8 @@ pub struct GpuReading {
     pub memory_clock_mhz: Option<f32>,
     pub power_w: Option<f32>,
     pub fan_pct: Option<f32>,
+    /// Obroty wentylatora (RPM) - NVAPI/ADL/IGCL, jesli dostepne.
+    pub fan_rpm: Option<f32>,
     pub vram_used_mb: Option<f32>,
     pub vram_total_mb: Option<f32>,
 }
@@ -69,6 +71,7 @@ impl GpuSensor {
             // NVML podaje moc w miliwatach.
             power_w: device.power_usage().ok().map(|mw| mw as f32 / 1000.0),
             fan_pct: device.fan_speed(0).ok().map(|f| f as f32),
+            fan_rpm: None,
             vram_used_mb: memory.as_ref().map(|m| m.used as f32 / MB),
             vram_total_mb: memory.as_ref().map(|m| m.total as f32 / MB),
         }

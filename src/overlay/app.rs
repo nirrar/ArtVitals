@@ -65,7 +65,7 @@ impl OverlayApp {
         crate::icons::install(ctx);
         let show_requested = instance.listen(ctx);
         let tray = Tray::new(ctx);
-        let sensors = SensorHub::start(ctx.clone(), config.sample_interval_ms, config.history_len());
+        let sensors = SensorHub::start(ctx.clone(), config.sensor_timing());
         let mut hotkeys = Hotkeys::new(ctx);
         let mut status = None;
         for (slot, text) in [
@@ -161,8 +161,10 @@ impl OverlayApp {
         if new_config.panel_theme != self.config.panel_theme {
             apply_style(ctx, new_config.panel_theme);
         }
-        self.sensors.set_timing(new_config.sample_interval_ms, new_config.history_len());
+        self.sensors.set_timing(new_config.sensor_timing());
         self.config = new_config;
+        // Globalna skala tekstu musi pasowac do wczytanej/przywroconej konfiguracji.
+        self.config.sanitize();
         if self.settings.selected.is_some_and(|id| !self.config.widgets.iter().any(|w| w.id == id)) {
             self.settings.selected = None;
         }
@@ -175,7 +177,7 @@ impl OverlayApp {
     }
 
     pub(super) fn timing_changed(&mut self) {
-        self.sensors.set_timing(self.config.sample_interval_ms, self.config.history_len());
+        self.sensors.set_timing(self.config.sensor_timing());
         self.mark_dirty();
     }
 
@@ -411,12 +413,50 @@ impl Drop for OverlayApp {
     }
 }
 
+/// Czas plynnego przejscia wartosci na karcie po nowym odczycie.
+const VALUE_ANIMATION_S: f64 = 0.35;
+/// Odstep klatek animacji (~30 FPS). Wbudowane animacje egui przerysowuja z czestotliwoscia
+/// monitora (np. 144 Hz) - przy otwartym oknie konfiguracji to kilkadziesiat % rdzenia,
+/// bo kazda klatka rysuje tez overlay na caly ekran.
+const VALUE_ANIMATION_FRAME: Duration = Duration::from_millis(33);
+
+/// Stan animacji jednej wartosci (pamiec egui, wspolna dla obu okien).
+#[derive(Clone, Copy)]
+struct ValueAnimation {
+    from: f32,
+    to: f32,
+    start: f64,
+}
+
+impl ValueAnimation {
+    fn value_at(&self, now: f64) -> (f32, bool) {
+        let t = ((now - self.start) / VALUE_ANIMATION_S).clamp(0.0, 1.0) as f32;
+        // Wygaszanie (ease-out): szybki start, miekkie dojscie do celu.
+        let eased = 1.0 - (1.0 - t).powi(3);
+        (self.from + (self.to - self.from) * eased, t < 1.0)
+    }
+}
+
 fn animated(ctx: &egui::Context, enabled: bool, widget_id: u64, slot: u8, value: Option<f32>) -> Option<f32> {
     let value = value?;
     if !enabled {
         return Some(value);
     }
-    Some(ctx.animate_value_with_time(Id::unique(("value", widget_id, slot)), value, 0.35))
+    let id = Id::unique(("value_animation", widget_id, slot));
+    let now = ctx.input(|i| i.time);
+    let (shown, running) = ctx.data_mut(|data| {
+        let animation = data.get_temp_mut_or_insert_with(id, || ValueAnimation { from: value, to: value, start: now });
+        if animation.to != value {
+            // Nowy cel: startujemy od tego, co jest teraz widoczne (bez skoku przy szybkich zmianach).
+            let (current, _) = animation.value_at(now);
+            *animation = ValueAnimation { from: current, to: value, start: now };
+        }
+        animation.value_at(now)
+    });
+    if running {
+        ctx.request_repaint_after(VALUE_ANIMATION_FRAME);
+    }
+    Some(shown)
 }
 
 /// Zmiana metryki: progi zawsze wracaja do domyslnych (inne jednostki), a kolor i ikona
@@ -491,6 +531,15 @@ mod tests {
         assert_eq!(widget.extra[0].metric, Metric::CpuTemp);
         change_metric(&mut widget, Metric::GpuLoad);
         assert!(widget.extra.is_empty());
+    }
+
+    #[test]
+    fn value_animation_reaches_target() {
+        let animation = ValueAnimation { from: 10.0, to: 20.0, start: 1.0 };
+        assert_eq!(animation.value_at(1.0), (10.0, true));
+        let (middle, running) = animation.value_at(1.0 + VALUE_ANIMATION_S / 2.0);
+        assert!(middle > 15.0 && middle < 20.0 && running);
+        assert_eq!(animation.value_at(1.0 + VALUE_ANIMATION_S), (20.0, false));
     }
 
     #[test]

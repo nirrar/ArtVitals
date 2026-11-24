@@ -38,6 +38,11 @@ const DXGI_PRESENT_START: u16 = 42;
 const DXGI_PRESENT_MPO_START: u16 = 55;
 const D3D9_PRESENT_START: u16 = 1;
 const DXGI_PRESENT_TEST: u32 = 1;
+/// EVENT_TRACE_USE_MS_FLUSH_TIMER (Windows 8+): `FlushTimer` w milisekundach zamiast sekund.
+const EVENT_TRACE_USE_MS_FLUSH_TIMER: u32 = 0x10;
+/// Co ile ms ETW oddaje zdarzenia. Zdarzen Present jest malo bajtowo, wiec bufor sam sie nie
+/// zapelnia - bez krotkiego timera klatki przychodzily paczkami co 1 s (skoki FPS, stojacy wykres).
+const FLUSH_TIMER_MS: u32 = 50;
 
 /// Ile ostatnich klatek trafia na wykres czasu klatki.
 pub const FRAME_GRAPH_LEN: usize = 240;
@@ -94,6 +99,14 @@ pub struct FpsReading {
     pub process: Option<String>,
 }
 
+/// Klatki mierzonego procesu: (znacznik QPC, czas klatki ms) + chwila odczytu w QPC.
+struct MeasuredFrames {
+    pid: u32,
+    frames: Vec<(i64, f32)>,
+    now: i64,
+    frequency: f64,
+}
+
 pub struct FpsMonitor {
     frame_log: Arc<Mutex<FrameLog>>,
     trace: PROCESSTRACE_HANDLE,
@@ -117,8 +130,8 @@ fn properties_buffer() -> Vec<u64> {
         (*props).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
         // 1 = znaczniki czasu w jednostkach QueryPerformanceCounter.
         (*props).Wnode.ClientContext = 1;
-        (*props).LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
-        (*props).FlushTimer = 1;
+        (*props).LogFileMode = EVENT_TRACE_REAL_TIME_MODE | EVENT_TRACE_USE_MS_FLUSH_TIMER;
+        (*props).FlushTimer = FLUSH_TIMER_MS;
         (*props).LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
     }
     buffer
@@ -250,34 +263,45 @@ impl FpsMonitor {
 
     /// Pomiar dla aktywnej gry; `window_s` - okno sredniego FPS i lows (jak historia wykresu).
     pub fn read(&mut self, window_s: f64) -> FpsReading {
-        let mut now = 0i64;
-        if unsafe { QueryPerformanceCounter(&mut now) }.is_err() {
+        let Some(measured) = self.measured_frames(None) else {
             return FpsReading::default();
-        }
+        };
+        let mut reading = compute_stats(&measured.frames, measured.now, measured.frequency, window_s);
+        reading.process = Some(self.process_name(measured.pid));
+        reading
+    }
+
+    /// Same ostatnie czasy klatek do wykresu - tanie, wolane ~30 razy na sekunde,
+    /// zeby wykres czasu klatki przesuwal sie plynnie, a nie skokami co interwal odczytu.
+    pub fn recent_frames(&mut self) -> Option<Vec<f32>> {
+        let measured = self.measured_frames(Some(FRAME_GRAPH_LEN))?;
+        Some(measured.frames.into_iter().map(|(_, ms)| ms).collect())
+    }
+
+    /// Wybiera mierzony proces (aktywne okno albo najaktywniejszy) i kopiuje jego klatki
+    /// (`limit` = tylko ostatnie N).
+    fn measured_frames(&mut self, limit: Option<usize>) -> Option<MeasuredFrames> {
+        let mut now = 0i64;
+        unsafe { QueryPerformanceCounter(&mut now) }.ok()?;
         let foreground = foreground_pid();
         let own_pid = self.own_pid;
-        let (pid, frames, frequency) = {
-            let Ok(mut log) = self.frame_log.lock() else { return FpsReading::default() };
-            let frequency = log.qpc_frequency;
-            let timeout = (ACTIVE_TIMEOUT_S * frequency) as i64;
-            log.processes.retain(|_, p| p.last_present.is_some_and(|t| now - t < (MAX_KEEP_S * frequency) as i64));
-            let active = |p: &ProcessFrames| p.last_present.is_some_and(|t| now - t < timeout);
-            let pid = foreground
-                .filter(|pid| *pid != own_pid && log.processes.get(pid).is_some_and(active))
-                .or_else(|| {
-                    log.processes
-                        .iter()
-                        .filter(|(pid, p)| **pid != own_pid && active(p))
-                        .max_by_key(|(_, p)| p.frames.iter().filter(|(t, _)| now - t < timeout).count())
-                        .map(|(pid, _)| *pid)
-                });
-            let Some(pid) = pid else { return FpsReading::default() };
-            let frames: Vec<(i64, f32)> = log.processes[&pid].frames.iter().copied().collect();
-            (pid, frames, frequency)
-        };
-        let mut reading = compute_stats(&frames, now, frequency, window_s);
-        reading.process = Some(self.process_name(pid));
-        reading
+        let mut log = self.frame_log.lock().ok()?;
+        let frequency = log.qpc_frequency;
+        let timeout = (ACTIVE_TIMEOUT_S * frequency) as i64;
+        log.processes.retain(|_, p| p.last_present.is_some_and(|t| now - t < (MAX_KEEP_S * frequency) as i64));
+        let active = |p: &ProcessFrames| p.last_present.is_some_and(|t| now - t < timeout);
+        let pid = foreground
+            .filter(|pid| *pid != own_pid && log.processes.get(pid).is_some_and(active))
+            .or_else(|| {
+                log.processes
+                    .iter()
+                    .filter(|(pid, p)| **pid != own_pid && active(p))
+                    .max_by_key(|(_, p)| p.frames.iter().filter(|(t, _)| now - t < timeout).count())
+                    .map(|(pid, _)| *pid)
+            })?;
+        let all = &log.processes[&pid].frames;
+        let skip = limit.map_or(0, |n| all.len().saturating_sub(n));
+        Some(MeasuredFrames { pid, frames: all.iter().skip(skip).copied().collect(), now, frequency })
     }
 
     fn process_name(&mut self, pid: u32) -> String {
@@ -328,9 +352,14 @@ fn process_exe_name(pid: u32) -> Option<String> {
 /// - sredni FPS: 1000 / sredni czas klatki w oknie `window_s`,
 /// - 1% / 0.1% low: FPS przy 99. / 99.9. percentylu czasu klatki w tym samym oknie
 ///   (definicja "percentylowa", jak w MSI Afterburner i CapFrameX "P1").
+///
+/// Okna liczone sa od ostatniej odebranej klatki, a nie od `now` - ETW dostarcza zdarzenia
+/// z opoznieniem, ktore inaczej zanizaloby FPS. Gdy gra przestaje prezentowac, proces po
+/// `ACTIVE_TIMEOUT_S` wypada z pomiaru, wiec stara wartosc nie wisi w nieskonczonosc.
 fn compute_stats(frames: &[(i64, f32)], now: i64, frequency: f64, window_s: f64) -> FpsReading {
-    let since = |seconds: f64| now - (seconds * frequency) as i64;
-    // Okna (teraz - N s, teraz] - klatka dokladnie na granicy nalezy juz do poprzedniego okna.
+    let end = frames.last().map_or(now, |(t, _)| *t);
+    let since = |seconds: f64| end - (seconds * frequency) as i64;
+    // Okna (koniec - N s, koniec] - klatka dokladnie na granicy nalezy juz do poprzedniego okna.
     let recent: Vec<f32> = frames.iter().filter(|(t, _)| *t > since(CURRENT_WINDOW_S)).map(|(_, ms)| *ms).collect();
     let mut window: Vec<f32> = frames.iter().filter(|(t, _)| *t > since(window_s)).map(|(_, ms)| *ms).collect();
 
@@ -385,6 +414,15 @@ mod tests {
         assert!((reading.fps.unwrap() - 20.0).abs() < 0.01);
         assert!((reading.frame_time_ms.unwrap() - 50.0).abs() < 0.01);
         assert_eq!(reading.recent_frames.len(), FRAME_GRAPH_LEN);
+    }
+
+    #[test]
+    fn delivery_delay_does_not_lower_fps() {
+        let frequency = 1000.0;
+        // 2 s rownych klatek po 10 ms, ale odczyt 700 ms po ostatniej (spozniona paczka ETW).
+        let frames: Vec<(i64, f32)> = (1..=200).map(|i| (i * 10, 10.0)).collect();
+        let reading = compute_stats(&frames, 2000 + 700, frequency, 10.0);
+        assert!((reading.fps.unwrap() - 100.0).abs() < 0.01);
     }
 
     #[test]

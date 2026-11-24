@@ -4,6 +4,8 @@
 //! opcjonalna druga wartosc z prawej, wykres z gradientowym wypelnieniem i stopka.
 //! Wszystkie wymiary i czcionki skaluja sie wspolczynnikiem `scale` liczonym
 //! z rozmiaru karty wzgledem domyslnego - mala karta = mniejsze elementy.
+//! Czcionki i wiersze z tekstem dostaja dodatkowo powiekszenie tekstu z ustawien
+//! (`text` = `scale` * `config::text_scale()`), a domyslny rozmiar karty rosnie razem z nim.
 //! Kolor wartosci przechodzi plynnie od akcentu przez zolty do czerwieni wg progow widgetu.
 
 use eframe::egui::{
@@ -203,9 +205,13 @@ fn format_value(metric: Metric, value: Option<f32>) -> String {
 pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, values: &WidgetValues) {
     // Skala liczona z rozmiaru logicznego karty, a dopiero potem mnozona przez zoom,
     // zeby podglad w oknie konfiguracji wygladal jak pomniejszony overlay.
-    let default = widget.kind.default_size();
+    // Domyslny rozmiar uwzglednia powiekszenie tekstu - karta dopasowana do czcionki ma base_scale 1.
+    let ts = config::text_scale();
+    let default = widget.kind.default_size_at(ts);
     let base_scale = (widget.size[0] / default[0]).min(widget.size[1] / default[1]).clamp(0.6, 3.0);
+    // `scale` - geometria (marginesy, wykresy, paski), `text` - czcionki i wiersze z tekstem.
     let scale = base_scale * pc.zoom;
+    let text = scale * ts;
     let op = pc.opacity;
     let radius = CornerRadius::same((8.0 * scale).round().clamp(1.0, 20.0) as u8);
 
@@ -222,10 +228,10 @@ pub fn paint_widget(pc: &PaintContext<'_>, rect: Rect, widget: &WidgetConfig, va
 
     let inner = rect.shrink(8.0 * scale);
     match widget.kind {
-        WidgetKind::Graph => paint_graph_card(pc, inner, widget, values, scale),
-        WidgetKind::Number => paint_number_card(pc, inner, widget, values, scale),
-        WidgetKind::Gauge => paint_gauge_card(pc, inner, widget, values, scale),
-        WidgetKind::Bar => paint_bar_card(pc, inner, widget, values, scale),
+        WidgetKind::Graph => paint_graph_card(pc, inner, widget, values, scale, text),
+        WidgetKind::Number => paint_number_card(pc, inner, widget, values, scale, text),
+        WidgetKind::Gauge => paint_gauge_card(pc, inner, widget, values, scale, text),
+        WidgetKind::Bar => paint_bar_card(pc, inner, widget, values, scale, text),
     }
 }
 
@@ -304,9 +310,16 @@ fn footer_height(widget: &WidgetConfig, scale: f32) -> f32 {
     }
 }
 
-fn paint_graph_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, values: &WidgetValues, scale: f32) {
-    let mut top = paint_header(pc, area, widget, values, scale, true);
-    let footer_h = footer_height(widget, scale);
+fn paint_graph_card(
+    pc: &PaintContext<'_>,
+    area: Rect,
+    widget: &WidgetConfig,
+    values: &WidgetValues,
+    scale: f32,
+    text: f32,
+) {
+    let mut top = paint_header(pc, area, widget, values, text, true);
+    let footer_h = footer_height(widget, text);
     let gap = 6.0 * scale;
 
     // Siatka wartosci pod naglowkiem, gdy dodatkow jest wiecej niz miesci kolumna w naglowku.
@@ -314,9 +327,9 @@ fn paint_graph_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
     if grid_rows > 0 {
         let grid = Rect::from_min_size(
             pos2(area.left(), top + 3.0 * scale),
-            vec2(area.width(), config::VALUE_ROW_HEIGHT * scale * grid_rows as f32),
+            vec2(area.width(), config::VALUE_ROW_HEIGHT * text * grid_rows as f32),
         );
-        paint_value_grid(pc, grid, &value_extras(widget, values), scale);
+        paint_value_grid(pc, grid, &value_extras(widget, values), text);
         top = grid.bottom();
     }
 
@@ -328,7 +341,7 @@ fn paint_graph_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
         .filter(|(_, extra)| extra.chart == ExtraChart::Separate)
         .map(|(value, _)| *value)
         .collect();
-    let row_h = SEPARATE_CHART_HEIGHT * scale;
+    let row_h = SEPARATE_CHART_HEIGHT * scale + config::SEPARATE_CHART_STRIP * (text - scale);
     let mut bottom = area.bottom() - if footer_h > 0.0 { footer_h + gap } else { 0.0 };
     for (metric, value) in separate.iter().rev() {
         let chart_top = bottom - (row_h - gap);
@@ -336,7 +349,7 @@ fn paint_graph_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
             break;
         }
         let rect = Rect::from_min_max(pos2(area.left(), chart_top), pos2(area.right(), bottom));
-        paint_separate_chart(pc, rect, *metric, *value, scale);
+        paint_separate_chart(pc, rect, *metric, *value, scale, text);
         bottom = chart_top - gap;
     }
 
@@ -346,16 +359,23 @@ fn paint_graph_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
     }
     if footer_h > 0.0 {
         let footer = Rect::from_min_max(pos2(area.left(), area.bottom() - footer_h), area.max);
-        paint_footer(pc, footer, widget, values, scale);
+        paint_footer(pc, footer, widget, values, text);
     }
 }
 
-fn paint_number_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, values: &WidgetValues, scale: f32) {
+fn paint_number_card(
+    pc: &PaintContext<'_>,
+    area: Rect,
+    widget: &WidgetConfig,
+    values: &WidgetValues,
+    scale: f32,
+    text: f32,
+) {
     let op = pc.opacity;
     let color = values.primary.map(|v| value_color(widget, v)).unwrap_or(TEXT_MUTED);
     let mut top = area.top();
     if widget.show_title {
-        let title_size = 13.0 * scale;
+        let title_size = 13.0 * text;
         pc.painter.text(
             area.left_top(),
             Align2::LEFT_TOP,
@@ -365,7 +385,7 @@ fn paint_number_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, v
         );
         top += title_size + 2.0 * scale;
     }
-    let footer_h = footer_height(widget, scale);
+    let footer_h = footer_height(widget, text);
     let bottom = area.bottom() - if footer_h > 0.0 { footer_h + 3.0 * scale } else { 0.0 };
     let value_area = Rect::from_min_max(pos2(area.left(), top), pos2(area.right(), bottom));
     let value_size = (value_area.height() * 0.95).clamp(10.0, 120.0);
@@ -386,14 +406,21 @@ fn paint_number_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, v
         );
     }
     let column = Rect::from_min_max(pos2(area.center().x, area.top()), pos2(area.right(), bottom));
-    paint_extras_column(pc, column, &value_extras(widget, values), area.top() + 7.0 * scale, scale);
+    paint_extras_column(pc, column, &value_extras(widget, values), area.top() + 7.0 * text, text);
     if footer_h > 0.0 {
         let footer = Rect::from_min_max(pos2(area.left(), area.bottom() - footer_h), area.max);
-        paint_footer(pc, footer, widget, values, scale);
+        paint_footer(pc, footer, widget, values, text);
     }
 }
 
-fn paint_gauge_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, values: &WidgetValues, scale: f32) {
+fn paint_gauge_card(
+    pc: &PaintContext<'_>,
+    area: Rect,
+    widget: &WidgetConfig,
+    values: &WidgetValues,
+    scale: f32,
+    text: f32,
+) {
     let op = pc.opacity;
     let mut top = area.top();
     if widget.show_title {
@@ -401,12 +428,12 @@ fn paint_gauge_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
             pos2(area.center().x, top),
             Align2::CENTER_TOP,
             widget.display_title(),
-            FontId::proportional(11.0 * scale),
+            FontId::proportional(11.0 * text),
             alpha(TEXT_PRIMARY, op),
         );
-        top += 13.0 * scale;
+        top += 13.0 * text;
     }
-    let footer_h = footer_height(widget, scale);
+    let footer_h = footer_height(widget, text);
     let bottom = area.bottom() - if footer_h > 0.0 { footer_h + 3.0 * scale } else { 0.0 };
     let gauge_area = Rect::from_min_max(pos2(area.left(), top), pos2(area.right(), bottom));
     let thickness = 7.0 * scale;
@@ -469,14 +496,21 @@ fn paint_gauge_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, va
     }
     if footer_h > 0.0 {
         let footer = Rect::from_min_max(pos2(area.left(), area.bottom() - footer_h), area.max);
-        paint_footer(pc, footer, widget, values, scale);
+        paint_footer(pc, footer, widget, values, text);
     }
 }
 
-fn paint_bar_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, values: &WidgetValues, scale: f32) {
+fn paint_bar_card(
+    pc: &PaintContext<'_>,
+    area: Rect,
+    widget: &WidgetConfig,
+    values: &WidgetValues,
+    scale: f32,
+    text: f32,
+) {
     // Dodatkowe metryki sa tu wierszami z paskami pod glownym - w naglowku bylyby zdublowane.
-    let header_bottom = paint_header(pc, area, widget, values, scale, false);
-    let footer_h = footer_height(widget, scale);
+    let header_bottom = paint_header(pc, area, widget, values, text, false);
+    let footer_h = footer_height(widget, text);
     let bar_h = 8.0 * scale;
     let bar_top = (header_bottom + 5.0 * scale).min(area.bottom() - bar_h - footer_h);
     let bar = Rect::from_min_size(pos2(area.left(), bar_top), vec2(area.width(), bar_h));
@@ -485,7 +519,7 @@ fn paint_bar_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, valu
     paint_progress(pc.painter, bar, fraction, alpha(color, pc.opacity), pc.opacity);
 
     // Musi sie zgadzac z config::BAR_EXTRA_ROW_HEIGHT (o tyle rosnie karta na kazdy wiersz).
-    let row_h = 13.0 * scale;
+    let row_h = 13.0 * text;
     let mut y = bar.bottom() + 4.0 * scale;
     let limit = area.bottom() - if footer_h > 0.0 { footer_h + 3.0 * scale } else { 0.0 };
     for (metric, value) in &values.extras {
@@ -493,7 +527,7 @@ fn paint_bar_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, valu
             break;
         }
         let row = Rect::from_min_size(pos2(area.left(), y), vec2(area.width(), row_h));
-        let font = FontId::proportional(9.0 * scale);
+        let font = FontId::proportional(9.0 * text);
         let label = pc.painter.text(
             row.left_center(),
             Align2::LEFT_CENTER,
@@ -520,7 +554,7 @@ fn paint_bar_card(pc: &PaintContext<'_>, area: Rect, widget: &WidgetConfig, valu
     }
     if footer_h > 0.0 {
         let footer = Rect::from_min_max(pos2(area.left(), area.bottom() - footer_h), area.max);
-        paint_footer(pc, footer, widget, values, scale);
+        paint_footer(pc, footer, widget, values, text);
     }
 }
 
@@ -664,24 +698,24 @@ fn paint_history_plot(pc: &PaintContext<'_>, plot: Rect, widget: &WidgetConfig, 
 
 /// Osobny wykres dodatkowej metryki: u gory pasek z etykieta i wartoscia, pod nim wykres
 /// we wlasnej skali - napisy nie nachodza na krzywa.
-fn paint_separate_chart(pc: &PaintContext<'_>, rect: Rect, metric: Metric, value: Option<f32>, scale: f32) {
+fn paint_separate_chart(pc: &PaintContext<'_>, rect: Rect, metric: Metric, value: Option<f32>, scale: f32, text: f32) {
     let op = pc.opacity;
-    let strip_h = 12.0 * scale;
+    let strip_h = config::SEPARATE_CHART_STRIP * text;
     let strip_y = rect.top() + strip_h * 0.5;
     let color = metric_color(metric);
-    pc.painter.circle_filled(pos2(rect.left() + 2.6 * scale, strip_y), 2.6 * scale, alpha(color, op));
+    pc.painter.circle_filled(pos2(rect.left() + 2.6 * text, strip_y), 2.6 * text, alpha(color, op));
     pc.painter.text(
-        pos2(rect.left() + 8.0 * scale, strip_y),
+        pos2(rect.left() + 8.0 * text, strip_y),
         Align2::LEFT_CENTER,
         metric.short_label(),
-        FontId::proportional(9.0 * scale),
+        FontId::proportional(9.0 * text),
         alpha(TEXT_MUTED, op),
     );
     pc.painter.text(
         pos2(rect.right(), strip_y),
         Align2::RIGHT_CENTER,
         extra_text(metric, value),
-        FontId::proportional(10.5 * scale),
+        FontId::proportional(10.5 * text),
         alpha(extra_color(metric, value), op),
     );
 
