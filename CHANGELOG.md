@@ -8,6 +8,11 @@ Wersjonowanie semantyczne (`MAJOR.MINOR.PATCH`), numer w `Cargo.toml`:
 Wersja jest widoczna w oknie konfiguracji (przy tytule), w podpowiedzi ikony w zasobniku
 i w pierwszej linii `overlay.log` (obok exe w wersji portable albo w `%APPDATA%\ArtVitals`).
 
+## [0.6.1] - 2026-11-25
+### Poprawione
+- Czarny ekran po wyjściu z gry / przy przełączaniu aplikacji: okno overlaya jest o 1 punkt niższe
+  niż monitor, żeby Windows i sterownik nie traktowały go jak aplikacji pełnoekranowej.
+
 ## [0.6.0] - 2026-11-24
 ### Dodane
 - Licencja MPL-2.0 (plik `LICENSE`) i repozytorium https://github.com/nirrar/ArtVitals.

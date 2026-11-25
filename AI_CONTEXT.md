@@ -43,6 +43,9 @@ Konfiguracja: `%APPDATA%\ArtVitals\config.toml` (dawniej `CraftGamingBoard` - mi
 
 ## Pułapki, które już kosztowały czas
 
+- **Czarny ekran** (po wyjściu z gry, Alt+Tab): overlay pokrywający DOKŁADNIE cały monitor był brany za
+  aplikację pełnoekranową (independent flip) i tracił przezroczystość - okno jest o 1 pt niższe (`app.rs::fit_window`).
+
 - **Overlay niewidoczny**: winit przy click-through dodaje `WS_EX_LAYERED` bez `SetLayeredWindowAttributes`
   - naprawiane w `overlay/win32.rs::fix_overlay_window` (szukanie okna po tytule + PID).
 - **Szara ramka wokół ekranu**: obwódka/cień DWM Windows 11 - wyłączane atrybutami DWM w tym samym miejscu.

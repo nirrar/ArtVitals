@@ -190,13 +190,18 @@ impl OverlayApp {
     }
 
     /// Dopasowanie okna overlaya do monitora - rozmiar monitora jest znany dopiero po starcie okna.
+    ///
+    /// Okno jest o 1 punkt nizsze niz monitor. Okno bez ramki, zawsze na wierzchu i pokrywajace
+    /// DOKLADNIE caly monitor Windows i sterownik (OpenGL na DXGI, NVIDIA) traktuja jak aplikacje
+    /// pelnoekranowa i przelaczaja w tryb bezposredniej prezentacji (independent flip) - wtedy
+    /// przezroczystosc znika i caly ekran robi sie czarny (np. po wyjsciu z gry, przy Alt+Tab).
     fn fit_window(&mut self, ctx: &egui::Context) {
         let monitor = ctx.input(|i| i.viewport().monitor_size);
         if let Some(size) = monitor {
             self.screen = Rect::from_min_size(egui::Pos2::ZERO, size);
             if !self.window_fitted {
                 ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::Pos2::ZERO));
-                ctx.send_viewport_cmd(ViewportCommand::InnerSize(size));
+                ctx.send_viewport_cmd(ViewportCommand::InnerSize(size - vec2(0.0, 1.0)));
                 self.window_fitted = true;
             }
         }

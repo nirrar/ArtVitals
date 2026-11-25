@@ -1,6 +1,6 @@
 [package]
 name = "art_vitals"
-version = "0.6.0"
+version = "0.6.1"
 license = "MPL-2.0"
 repository = "https://github.com/nirrar/ArtVitals"
 edition = "2024"
